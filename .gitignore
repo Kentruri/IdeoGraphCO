@@ -1,0 +1,38 @@
+# Data (versionado con DVC)
+data/
+
+# Logs y checkpoints
+logs/
+*.ckpt
+*.pt
+*.bin
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Entornos
+.env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MLflow / Weights & Biases
+mlruns/
+wandb/
