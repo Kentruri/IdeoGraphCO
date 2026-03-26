@@ -29,7 +29,7 @@ En lugar de clasificar izquierda/derecha, el sistema genera una "huella digital 
 ## Loss function
 
 ```
-TotalLoss = Σ(i=1..8) MSE(y_i, ŷ_i)
+TotalLoss = CrossEntropy(politicidad) + Σ(i=1..8) MSE(y_i, ŷ_i)
 ```
 
 Métricas por eje: MSE y R² calculados con `torchmetrics`.
@@ -40,29 +40,60 @@ Métricas por eje: MSE y R² calculados con `torchmetrics`.
 - **Hydra**: configuración jerárquica de hiperparámetros (configs/)
 - **torchmetrics**: métricas independientes por cada eje
 - **Plotly**: radar charts interactivos
-- **Newspaper3k**: scraping de noticias colombianas
+- **Newspaper4k**: scraping de noticias colombianas (reemplazo de newspaper3k)
+- **feedparser**: parseo de feeds RSS de medios colombianos
 
 ## Pipeline de datos
 
-1. `scripts/` — Scraping de noticias → `data/raw/`
+1. `scripts/scraper.py` — CLI de scraping → `data/raw/news.jsonl`
 2. `src/labeling/` — LLM-as-a-Judge con codebook político califica 0-100 por eje → `data/interim/`
 3. `src/data/` — Tokenización + LightningDataModule → `data/processed/`
 4. `src/models/` — IdeoVectModel (ConfliBERT + filtro + 8 cabezas)
-5. `src/training/` — Entrenamiento con Lightning
+5. `src/training/` — Entrenamiento con Lightning + Hydra
 6. `src/inference/` — Predicción + generación de radar chart
 
 ## Estructura del proyecto
 
 ```
 src/
-├── data/           # LightningDataModule, tokenización
-├── labeling/       # Pipeline LLM-as-a-Judge
-├── models/         # IdeoVectModel (encoder + filtro + 8 cabezas)
-├── training/       # Bucle de entrenamiento Lightning
-├── inference/      # Predicción + radar charts
-├── utils/          # Métricas y helpers
-└── paths.py        # Gestión de rutas con pathlib
+├── data/
+│   ├── sources.py          # Catálogo de 27 fuentes en 5 categorías + RSS feeds
+│   ├── scraping/
+│   │   ├── config.py       # Configuración de Newspaper4k (User-Agent, timeout)
+│   │   └── parser.py       # parse_article, scrape_source, scrape_rss
+│   ├── dataset.py          # IdeoGraphDataset (tokenización + carga de labels)
+│   └── datamodule.py       # LightningDataModule (splits train/val/test)
+├── labeling/               # Pipeline LLM-as-a-Judge
+├── models/
+│   └── ideovect_model.py   # IdeoVectModel (encoder + filtro + 8 cabezas MLP)
+├── training/
+│   └── train.py            # Script principal Hydra + Lightning Trainer
+├── inference/
+│   ├── predictor.py        # Carga checkpoint + predicción de 8 ejes
+│   └── radar.py            # Radar charts con Plotly
+├── utils/                  # Métricas y helpers
+└── paths.py                # Gestión de rutas con pathlib (auto-crea directorios)
+
+scripts/
+└── scraper.py              # CLI de scraping (solo orquestación, lógica en src/)
+
+configs/
+├── model/default.yaml      # ConfliBERT, hiperparámetros, nombres de ejes
+├── data/default.yaml       # Rutas, batch_size, max_length, splits
+└── trainer/default.yaml    # Epochs, precision, early stopping, checkpoints
 ```
+
+## Fuentes de datos (5 categorías)
+
+| Categoría       | Fuentes | Dimensiones que potencia                    |
+|-----------------|---------|---------------------------------------------|
+| Nacional        | 8       | Línea base ideológica                       |
+| Independiente   | 7       | Populismo, doctrinarismo, progresismo       |
+| Institucional   | 4       | Institucionalismo puro                      |
+| Regional        | 6       | Personalismo local, soberanismo             |
+| Gremial         | 2       | Soberanismo vs. globalismo                  |
+
+Catálogo completo en `src/data/sources.py`.
 
 ## Convenciones de código
 

@@ -1,5 +1,5 @@
-# Data (versionado con DVC)
-data/
+# Data (versionado con DVC) — solo la carpeta raíz, no src/data/
+/data/
 
 # Logs y checkpoints
 logs/
