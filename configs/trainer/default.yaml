@@ -1,0 +1,20 @@
+# Configuración del Trainer de Lightning
+max_epochs: 10
+accelerator: "auto"       # detecta GPU/MPS/CPU automáticamente
+devices: 1
+precision: "16-mixed"     # mixed precision para ahorrar VRAM
+
+# Callbacks
+early_stopping:
+  monitor: "val/loss"
+  patience: 3
+  mode: "min"
+
+model_checkpoint:
+  monitor: "val/loss"
+  mode: "min"
+  save_top_k: 2
+  filename: "ideovect-{epoch:02d}-{val/loss:.4f}"
+
+# Logging
+log_every_n_steps: 10

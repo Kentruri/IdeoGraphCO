@@ -1,0 +1,5 @@
+# Configuración raíz — Hydra compone los sub-configs
+defaults:
+  - model: default
+  - data: default
+  - trainer: default

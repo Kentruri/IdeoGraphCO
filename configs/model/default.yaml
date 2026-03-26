@@ -1,0 +1,20 @@
+# Configuración del modelo IdeoVect
+model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
+num_axes: 8
+
+# Hiperparámetros de entrenamiento
+learning_rate: 2e-5
+dropout: 0.1
+weight_decay: 0.01
+freeze_encoder_epochs: 0  # épocas con encoder congelado antes de fine-tuning completo
+
+# Nombres de los 8 ejes ideológicos (orden canónico)
+axis_names:
+  - personalismo
+  - institucionalismo
+  - populismo
+  - doctrinarismo
+  - soberanismo
+  - globalismo
+  - conservadurismo
+  - progresismo
