@@ -30,6 +30,22 @@ from src.data.scraping.robots import is_url_allowed
 
 logger = logging.getLogger(__name__)
 
+# Silenciar warnings ruidosos de trafilatura/courlan (links externos descartados,
+# downloads fallidos, dominios divergentes). Solo dejar errores reales.
+for noisy in ("courlan", "trafilatura", "htmldate", "trafilatura.metadata", "trafilatura.htmlprocessing"):
+    logging.getLogger(noisy).setLevel(logging.ERROR)
+
+# Config de trafilatura con timeout para no quedar colgado en sitios lentos
+from trafilatura.settings import use_config
+
+_TRAFILATURA_CONFIG = use_config()
+_TRAFILATURA_CONFIG.set("DEFAULT", "DOWNLOAD_TIMEOUT", "15")
+_TRAFILATURA_CONFIG.set("DEFAULT", "EXTRACTION_TIMEOUT", "20")
+_TRAFILATURA_CONFIG.set("DEFAULT", "USER_AGENTS", (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+))
+
 # ---------------------------------------------------------------------------
 # Rate limiting con backoff exponencial
 # ---------------------------------------------------------------------------
@@ -57,7 +73,8 @@ def _adaptive_sleep(consecutive_errors: int) -> None:
 def extract_article(url: str, source: str, category: str) -> dict | None:
     """Descarga y extrae un artículo con Trafilatura."""
     try:
-        downloaded = trafilatura.fetch_url(url)
+        # Timeout explícito de 15s para no quedar colgado en sitios lentos
+        downloaded = trafilatura.fetch_url(url, config=_TRAFILATURA_CONFIG)
         if downloaded is None:
             return None
 
@@ -143,16 +160,38 @@ def discover_urls_rss(feeds: list[str]) -> list[str]:
     return urls
 
 
-def discover_urls_sitemap(base_url: str, url_filters: list[str]) -> list[str]:
-    """Descubre URLs desde sitemap.xml, filtradas por sección política."""
-    try:
-        all_urls = sitemap_search(base_url)
-        if not all_urls:
-            return []
-        return _filter_political_urls(list(all_urls), url_filters)
-    except Exception:
-        logger.warning("Error leyendo sitemap de %s", base_url)
+def discover_urls_sitemap(
+    base_url: str, url_filters: list[str], timeout: int = 30,
+) -> list[str]:
+    """Descubre URLs desde sitemap.xml, filtradas por sección política.
+
+    Usa timeout via threading para evitar quedarse colgado en sitemaps gigantes
+    o sitios sin sitemap accesible.
+    """
+    import threading
+
+    result: list[str] = []
+    error: list[str] = []
+
+    def _search() -> None:
+        try:
+            all_urls = sitemap_search(base_url)
+            if all_urls:
+                result.extend(_filter_political_urls(list(all_urls), url_filters))
+        except Exception as e:
+            error.append(str(e))
+
+    thread = threading.Thread(target=_search, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+
+    if thread.is_alive():
+        logger.warning("Sitemap de %s timeout después de %ds, saltando", base_url, timeout)
         return []
+    if error:
+        logger.warning("Error leyendo sitemap de %s: %s", base_url, error[0][:100])
+        return []
+    return result
 
 
 def discover_urls_crawl(base_url: str) -> list[str]:
@@ -199,13 +238,16 @@ def scrape_source(
         logger.info("  RSS: %d URLs encontradas", len(rss_urls))
         candidate_urls.extend(rss_urls)
 
-    # Sitemap (si no tenemos suficientes URLs o como complemento)
-    if len(candidate_urls) < max_articles:
-        sitemap_urls = discover_urls_sitemap(url, url_filters if mode == "sitemap" else [])
-        # Deduplicar contra URLs de RSS
+    # Sitemap solo si RSS no dio suficientes
+    # (con max_articles*2 como margen para errores/duplicados)
+    if len(candidate_urls) < max_articles * 2:
+        logger.info("  Buscando sitemap (timeout 30s)...")
+        sitemap_urls = discover_urls_sitemap(
+            url, url_filters if mode == "sitemap" else [],
+        )
         existing = set(candidate_urls)
         new_sitemap = [u for u in sitemap_urls if u not in existing]
-        logger.info("  Sitemap: %d URLs encontradas (%d nuevas)", len(sitemap_urls), len(new_sitemap))
+        logger.info("  Sitemap: %d URLs (%d nuevas)", len(sitemap_urls), len(new_sitemap))
         candidate_urls.extend(new_sitemap)
 
     # Fallback: crawl de la página
@@ -244,19 +286,29 @@ def scrape_source(
 
         pbar.set_postfix_str(f"{len(articles)} nuevos, {skipped} dup, {blocked} robot")
 
+        # URL truncada para que el log no sea ilegible
+        url_short = article_url if len(article_url) <= 90 else article_url[:87] + "..."
+
         if is_already_scraped(article_url):
+            logger.info("  [%s] DUP  %s", name, url_short)
             skipped += 1
             continue
 
         if not is_url_allowed(article_url):
+            logger.info("  [%s] ROBOT %s", name, url_short)
             blocked += 1
             continue
 
         data = extract_article(article_url, name, category)
         if data:
+            logger.info(
+                "  [%s] OK   %d chars — %s",
+                name, len(data["text"]), url_short,
+            )
             articles.append(data)
             consecutive_errors = 0
         else:
+            logger.info("  [%s] FAIL %s", name, url_short)
             consecutive_errors += 1
 
         _adaptive_sleep(consecutive_errors)

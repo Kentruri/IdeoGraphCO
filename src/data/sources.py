@@ -163,6 +163,55 @@ SOURCES: dict[str, dict] = {
         "url_filters": [],
         "rss_feeds": [],
     },
+    "las2orillas": {
+        "url": "https://www.las2orillas.co",
+        "category": "independiente",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [
+            "https://www.las2orillas.co/feed/",
+        ],
+    },
+    "pulzo": {
+        "url": "https://www.pulzo.com",
+        "category": "independiente",
+        "mode": "sitemap",
+        "url_filters": ["/politica/", "/nacion/", "/economia/"],
+        "rss_feeds": [
+            "https://www.pulzo.com/rss",
+        ],
+    },
+
+    # ===========================
+    # OPINIÓN / ANÁLISIS (refuerzan doctrinarismo y análisis político)
+    # ===========================
+    "dejusticia": {
+        "url": "https://www.dejusticia.org",
+        "category": "opinion",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [
+            "https://www.dejusticia.org/feed/",
+        ],
+    },
+    "pares": {
+        "url": "https://www.pares.com.co",
+        "category": "opinion",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [
+            "https://www.pares.com.co/feed/",
+        ],
+    },
+    "latinoamerica21": {
+        "url": "https://latinoamerica21.com",
+        "category": "opinion",
+        "mode": "sitemap",
+        "url_filters": ["/colombia/", "/politica/", "/opinion/"],
+        "rss_feeds": [
+            "https://latinoamerica21.com/feed/",
+        ],
+    },
 
     # ===========================
     # INSTITUCIONALES (institucionalismo puro)
@@ -190,6 +239,45 @@ SOURCES: dict[str, dict] = {
     },
     "senado": {
         "url": "https://www.senado.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "camara": {
+        "url": "https://www.camara.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [
+            "https://www.camara.gov.co/feed",
+        ],
+    },
+    "contraloria": {
+        "url": "https://www.contraloria.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "mininterior": {
+        "url": "https://www.mininterior.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [
+            "https://www.mininterior.gov.co/feed/",
+        ],
+    },
+    "cancilleria": {
+        "url": "https://www.cancilleria.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "corteconstitucional": {
+        "url": "https://www.corteconstitucional.gov.co",
         "category": "institucional",
         "mode": "direct",
         "url_filters": [],
