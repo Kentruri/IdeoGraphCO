@@ -1,0 +1,22 @@
+# ConfliBERT-Spanish — pre-entrenado en política y conflicto en español
+# Hipótesis principal: el pre-entreno especializado mejora la captura de
+# matices políticos colombianos.
+model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
+encoder_alias: "confliberto"
+num_axes: 8
+
+# Hiperparámetros (mismos para los 3 modelos del benchmark)
+learning_rate: 2e-5
+dropout: 0.1
+weight_decay: 0.01
+freeze_encoder_epochs: 0
+
+axis_names:
+  - personalismo
+  - institucionalismo
+  - populismo
+  - doctrinarismo
+  - soberanismo
+  - globalismo
+  - conservadurismo
+  - progresismo

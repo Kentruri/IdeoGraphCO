@@ -1,0 +1,22 @@
+# RoBERTa-base-bne (MarIA) — pre-entrenado en BNE (Biblioteca Nacional España)
+# Es un modelo generalista de español pero con corpus muy grande.
+# Baseline contra el cual comparar el dominio específico de ConfliBERT.
+model_name: "PlanTL-GOB-ES/roberta-base-bne"
+encoder_alias: "maria"
+num_axes: 8
+
+# Hiperparámetros (mismos que ConfliBERT para comparabilidad)
+learning_rate: 2e-5
+dropout: 0.1
+weight_decay: 0.01
+freeze_encoder_epochs: 0
+
+axis_names:
+  - personalismo
+  - institucionalismo
+  - populismo
+  - doctrinarismo
+  - soberanismo
+  - globalismo
+  - conservadurismo
+  - progresismo
