@@ -1,4 +1,8 @@
-from src.data.scraping.config import get_newspaper_config
-from src.data.scraping.parser import parse_article, scrape_rss, scrape_source
+from src.data.scraping.db import get_scraped_count
+from src.data.scraping.parser import extract_article, scrape_source
 
-__all__ = ["get_newspaper_config", "parse_article", "scrape_source", "scrape_rss"]
+__all__ = [
+    "extract_article",
+    "get_scraped_count",
+    "scrape_source",
+]
