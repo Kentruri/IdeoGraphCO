@@ -1,20 +1,20 @@
-# Configuración del modelo IdeoVect
+# Configuración por defecto del modelo IdeoVect (alias: confliberto).
+# Para benchmark con múltiples encoders, usar configs/model/{confliberto,maria,beto}.yaml
 model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
+encoder_alias: "confliberto"
 num_axes: 8
 
 # Hiperparámetros de entrenamiento
 learning_rate: 2e-5
 dropout: 0.1
 weight_decay: 0.01
-freeze_encoder_epochs: 0  # épocas con encoder congelado antes de fine-tuning completo
+warmup_ratio: 0.1            # 10% de pasos para warmup lineal
+freeze_encoder_epochs: 0     # épocas con encoder congelado antes de fine-tuning
 
-# Nombres de los 8 ejes ideológicos (orden canónico)
-axis_names:
-  - personalismo
-  - institucionalismo
-  - populismo
-  - doctrinarismo
-  - soberanismo
-  - globalismo
-  - conservadurismo
-  - progresismo
+# Cabeza de politicidad: deshabilitar cuando todo el dataset es is_political=1
+# (la loss converge trivialmente y solo añade ruido al encoder).
+# Activar solo si incluyes artículos no-políticos en el dataset.
+use_politicity_head: false
+
+# Nota: los nombres de los 8 ejes son la fuente de verdad en
+# src/models/ideovect_model.py:AXIS_NAMES (no se duplica aquí).

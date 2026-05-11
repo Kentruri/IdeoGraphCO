@@ -1,22 +1,18 @@
 # RoBERTa-base-bne (MarIA) — pre-entrenado en BNE (Biblioteca Nacional España)
-# Es un modelo generalista de español pero con corpus muy grande.
+# Generalista español con corpus muy grande.
 # Baseline contra el cual comparar el dominio específico de ConfliBERT.
+#
+# NOTA: MarIA puede beneficiarse de un LR más bajo (1e-5). Con este config
+# se usa el mismo LR que ConfliBERT para que la comparación sea estricta.
+# Si quieres comparación "best-effort", lanzar con LR override:
+#   python -m src.training.train model=maria model.learning_rate=1e-5
 model_name: "PlanTL-GOB-ES/roberta-base-bne"
 encoder_alias: "maria"
 num_axes: 8
 
-# Hiperparámetros (mismos que ConfliBERT para comparabilidad)
 learning_rate: 2e-5
 dropout: 0.1
 weight_decay: 0.01
+warmup_ratio: 0.1
 freeze_encoder_epochs: 0
-
-axis_names:
-  - personalismo
-  - institucionalismo
-  - populismo
-  - doctrinarismo
-  - soberanismo
-  - globalismo
-  - conservadurismo
-  - progresismo
+use_politicity_head: false

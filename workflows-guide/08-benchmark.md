@@ -2,7 +2,7 @@
 
 ## Qué hace
 
-Entrena el mismo modelo (8 cabezas de regresión + filtro de politicidad) con **3 encoders distintos** y compara cuál funciona mejor para tu dataset:
+Entrena el mismo modelo (8 cabezas de regresión + filtro de politicidad opcional) con **N encoders distintos × M semillas** y compara cuál funciona mejor para tu dataset:
 
 | Encoder | HuggingFace ID | Hipótesis |
 |---------|----------------|-----------|
@@ -12,105 +12,139 @@ Entrena el mismo modelo (8 cabezas de regresión + filtro de politicidad) con **
 
 ## Por qué hacer este benchmark
 
-Para la tesis, **no basta con afirmar** que ConfliBERT es mejor para política colombiana. Hay que **demostrarlo empíricamente**:
-
-1. Justifica la elección de ConfliBERT con números reales
-2. Demuestra rigor metodológico
-3. Identifica si hay ejes donde otros modelos son mejores
-4. Defendible ante jurados
+Para la tesis, **no basta con afirmar** que ConfliBERT es mejor para política colombiana. Hay que **demostrarlo empíricamente** con métricas robustas (multi-seed) sobre un test set fijo.
 
 ## Cómo funciona
 
 ```
-Mismo dataset (labeled_news_clean.jsonl)
-        ↓
-Mismo split (semilla 42)
-        ↓
-Mismos hiperparámetros (LR=2e-5, batch=16, etc.)
-        ↓
-   ┌─────────────┬─────────────┬──────────┐
-   │ ConfliBERT  │   MarIA     │   BETO   │
-   │ entrenar    │  entrenar   │ entrenar │
-   └─────┬───────┴─────┬───────┴────┬─────┘
-         │             │            │
-         ▼             ▼            ▼
-    metrics.json  metrics.json  metrics.json
-                       │
-                       ▼
-            scripts/compare_models.py
-                       │
-                       ▼
-        reports/benchmark_report.md (+ CSV + PNG)
+Mismo dataset → splits.json (pre-computado a disco) → 3 modelos × N semillas
+                                                              │
+                              ┌───────────────────────────────┴───────────┐
+                              ▼                                           ▼
+                       Cada corrida produce:                   Después del benchmark:
+                       - logs/checkpoints/<run>/                scripts/compare_models.py
+                       - logs/benchmark/<run>/metrics.json      → reports/benchmark_report.md
+                       - logs/benchmark/<run>/stdout.log           + CSV + 3 PNG
 ```
 
 ## Archivos involucrados
 
-### Configs
+### Configs (Hydra)
 - [configs/model/confliberto.yaml](../configs/model/confliberto.yaml)
 - [configs/model/maria.yaml](../configs/model/maria.yaml)
 - [configs/model/beto.yaml](../configs/model/beto.yaml)
+- [configs/trainer/default.yaml](../configs/trainer/default.yaml) — `precision: auto`, `fast_dev_run`
 
 ### Scripts
-- [scripts/benchmark.py](../scripts/benchmark.py) — Lanza los 3 entrenamientos
-- [scripts/compare_models.py](../scripts/compare_models.py) — Genera el reporte
-- [src/training/train.py](../src/training/train.py) — Modificado para guardar `metrics.json` por encoder
+- [scripts/prepare_splits.py](../scripts/prepare_splits.py) — Pre-computar train/val/test
+- [scripts/analyze_distribution.py](../scripts/analyze_distribution.py) — Diagnosticar el dataset
+- [scripts/benchmark.py](../scripts/benchmark.py) — Lanza los entrenamientos (multi-seed)
+- [scripts/compare_models.py](../scripts/compare_models.py) — Reporte comparativo
 
-### Modelo
-- [src/models/ideovect_model.py](../src/models/ideovect_model.py) — Acepta `model_name` configurable
+### Código
+- [src/benchmark/registry.py](../src/benchmark/registry.py) — Lista de encoders disponibles
+- [src/models/ideovect_model.py](../src/models/ideovect_model.py) — Modelo configurable con scheduler
+- [src/data/datamodule.py](../src/data/datamodule.py) — Soporta splits desde disco
 
-## Setup previo
+## Setup previo (en orden)
 
-Necesitas el dataset filtrado (paso 4) y `matplotlib` para los gráficos:
+### 1. Verificar dataset etiquetado y filtrado
 
 ```bash
-ls data/interim/labeled_news_clean.jsonl    # debe existir
-pip install matplotlib                       # para gráficos comparativos
+ls -la data/interim/labeled_news_clean.jsonl
+```
+
+Si no existe, completar los pasos 1-4 (scraping → cleaning → labeling → filtering).
+
+### 2. Analizar distribución de scores
+
+Identifica ejes con poca varianza ANTES de entrenar:
+
+```bash
+python scripts/analyze_distribution.py
+```
+
+Salida ejemplo:
+```
+Eje                  Media     Std     Var  >=0.3  >=0.5  >=0.7  Warning
+--------------------------------------------------------------------------
+personalismo         0.342   0.234   0.055    640    421    329
+institucionalismo    0.589   0.198   0.039    920    788    523
+populismo            0.193   0.158   0.025    320    150     45
+doctrinarismo        0.122   0.097   0.009    120     48     18  ⚠️ varianza muy baja
+soberanismo          0.118   0.103   0.011    140     68     23  ⚠️ <30 muestras altas
+...
+```
+
+Los ejes con warnings probablemente tendrán **R² bajo independientemente del encoder**. No es culpa del modelo, es falta de señal en el dataset.
+
+### 3. Pre-computar splits
+
+Garantiza que TODAS las corridas (3 modelos × N semillas) usen exactamente los mismos índices de train/val/test:
+
+```bash
+python scripts/prepare_splits.py
+```
+
+Genera `data/processed/splits.json`. Si añades más datos al JSONL mañana, ese archivo no cambia (a menos que lo regeneres explícitamente). Esto es **crítico** para comparabilidad.
+
+### 4. Instalar matplotlib (para gráficos del reporte)
+
+```bash
+pip install matplotlib
 ```
 
 ## Comandos
 
-### Entrenar los 3 modelos
+### Smoke test (validar pipeline, 1 min)
+
+```bash
+python scripts/benchmark.py --smoke-test
+```
+
+Corre `fast_dev_run` en los 3 modelos — 1 batch de train/val/test cada uno. Si esto funciona, la pipeline está bien y puedes lanzar el benchmark real.
+
+### Benchmark real
 
 ```bash
 source .venv/bin/activate
 
-# Mantener Mac despierto (el benchmark dura 6-8 horas)
+# Mantener Mac despierto (puede durar 6-8h con 1 semilla, 18-24h con 3)
 caffeinate -d -i -s &
 
-# Entrenar los 3 secuencialmente
+# 1 semilla (exploratorio, 6-8 horas)
 python scripts/benchmark.py
+
+# 3 semillas (rigor estadístico para tesis, 18-24 horas)
+python scripts/benchmark.py --seeds 42 43 44
 
 # Solo 2 modelos
 python scripts/benchmark.py --models confliberto beto
 
-# Saltar uno ya entrenado
-python scripts/benchmark.py --skip confliberto
-
-# Prueba rápida con 5 epochs
-python scripts/benchmark.py --max-epochs 5
-
 # Continuar aunque uno falle
 python scripts/benchmark.py --continue-on-error
+
+# Resumir si se interrumpió
+python scripts/benchmark.py --skip confliberto    # ya estaba hecho
 ```
 
 ### Generar reporte comparativo
 
 ```bash
-# Después de que terminen los 3 entrenamientos
 python scripts/compare_models.py
 ```
 
 ### Entrenar UN solo modelo manualmente
 
-Si prefieres entrenar manualmente:
 ```bash
-# Con el config Hydra
+# Default semilla 42
 python -m src.training.train model=confliberto
-python -m src.training.train model=maria
-python -m src.training.train model=beto
 
-# Con override de hiperparámetros
-python -m src.training.train model=confliberto trainer.max_epochs=20
+# Override de semilla
+python -m src.training.train model=maria data.seed=43
+
+# Override de hiperparámetros
+python -m src.training.train model=confliberto model.learning_rate=1e-5
 ```
 
 ## Salida
@@ -120,105 +154,125 @@ python -m src.training.train model=confliberto trainer.max_epochs=20
 ```
 logs/
 ├── checkpoints/
-│   ├── confliberto/
-│   │   ├── ideovect-epoch=08-val_loss=0.0432.ckpt
-│   │   └── last.ckpt
-│   ├── maria/
-│   │   └── ...
-│   └── beto/
-│       └── ...
+│   ├── confliberto__seed42/    # checkpoints por corrida
+│   ├── confliberto__seed43/
+│   ├── maria__seed42/
+│   └── ...
 ├── benchmark/
-│   ├── confliberto/metrics.json
-│   ├── maria/metrics.json
-│   └── beto/metrics.json
-└── lightning_logs/
-    ├── confliberto/...      # TensorBoard logs
-    ├── maria/...
-    └── beto/...
+│   ├── confliberto__seed42/
+│   │   ├── metrics.json        # métricas finales
+│   │   └── stdout.log          # log completo del entrenamiento
+│   ├── confliberto__seed43/
+│   └── ...
+├── lightning_logs/             # TensorBoard logs
+└── hydra/                      # Output de Hydra por run
 
 reports/
-├── benchmark_report.md       # Reporte Markdown
-├── benchmark_metrics.csv     # Métricas en formato CSV
-├── r2_per_axis.png           # Bar chart R² por eje
-├── mse_per_axis.png          # Bar chart MSE por eje
-└── radar_comparison.png      # Radar chart comparativo
+├── benchmark_report.md         # Reporte Markdown con tablas
+├── benchmark_metrics.csv       # Todas las métricas en CSV
+├── r2_per_axis.png             # Bar chart R² (con errorbars si multi-seed)
+├── mse_per_axis.png            # Bar chart MSE
+└── radar_comparison.png        # Radar comparativo
 ```
 
-### Contenido del reporte Markdown
+### El reporte Markdown
 
-`reports/benchmark_report.md` tiene:
+`reports/benchmark_report.md` incluye:
 
-1. **Configuración** — Dataset, hiperparámetros, modelos comparados
+1. **Configuración** — Dataset, hiperparámetros, git commit
 2. **Tabla resumen global** — Best val loss, avg R², avg MSE, train time
-3. **R² por eje y modelo** — Tabla con ganador por eje
-4. **MSE por eje y modelo** — Idem
-5. **Análisis automático** — Cuántos ejes gana cada modelo
+3. **R² por eje** — Una fila por eje, una columna por modelo, ganador automático
+4. **MSE por eje** — Idem
+5. **Análisis automático**:
+   - Victorias por R² (cuántos ejes gana cada modelo)
+   - **Rank promedio** (1 = mejor en cada eje, menor = mejor)
+
+Cuando hay **multi-seed**, los valores se muestran como `media ± std`.
 
 ## Métricas que se comparan
 
 | Métrica | Significado | Mejor |
 |---------|-------------|-------|
-| **R²** | Varianza explicada (0-1) | Mayor |
+| **R²** | Varianza explicada (puede ser negativo si modelo es peor que la media) | Mayor |
 | **MSE** | Error cuadrático medio | Menor |
 | **Best Val Loss** | Loss en validación al terminar | Menor |
 | **Train time** | Minutos de entrenamiento | Menor |
-
-## Tiempo estimado
-
-| Fase | Tiempo en M1 (MPS) | Tiempo en GPU (RTX 3060+) |
-|------|--------------------|-----------------------------|
-| ConfliBERT (1 modelo, 10 epochs) | ~2 horas | ~30 min |
-| MarIA | ~2 horas | ~30 min |
-| BETO | ~2 horas | ~30 min |
-| **Total benchmark** | **~6-7 horas** | **~1.5 horas** |
-| Reporte | ~5 segundos | ~5 segundos |
-
-Para una prueba rápida (`--max-epochs 5`): ~3-4 horas en M1, ~45 min en GPU.
+| **Rank promedio** | Posición promedio entre ejes (1 = mejor) | Menor |
 
 ## Garantía de comparabilidad
 
-Para que la comparación sea justa, los 3 entrenamientos usan:
+Para que la comparación sea justa, las corridas usan:
 
-- ✅ **Mismo dataset** (mismo `data.data_path`)
-- ✅ **Mismo split** (`seed=42` determinista)
-- ✅ **Mismos hiperparámetros**: LR=2e-5, dropout=0.1, batch=16, weight_decay=0.01
+- ✅ **Mismo dataset** (`data.data_path`)
+- ✅ **Mismo split** (`data/processed/splits.json` pre-computado)
+- ✅ **Mismos hiperparámetros base**: LR=2e-5, dropout=0.1, batch=16, warmup=10%, weight_decay=0.01
 - ✅ **Mismas épocas máximas** y patience de early stopping
-- ✅ **Mismo hardware** (corren en la misma máquina)
-- ✅ **Mismo tokenizer** que el encoder (cada uno con su propio tokenizer)
+- ✅ **Misma loss**: solo regresión MSE (cabeza de politicidad deshabilitada)
+- ✅ **Scheduler**: linear warmup + decay (estándar para fine-tuning BERT)
+- ✅ **Workers seeded** (`worker_init_fn` para reproducibilidad del shuffle)
+- ✅ **Mismo hardware**
 
 La única diferencia es el **encoder pre-entrenado**.
+
+## ⚠️ Limitación importante: mismos hiperparámetros
+
+Usar los mismos HP en los 3 modelos significa:
+
+- ✅ **Comparación estricta**: el efecto medido es del encoder, no del HP
+- ⚠️ **Posible sesgo**: LR=2e-5 es óptimo para BERT-base pero **MarIA suele necesitar 1e-5**
+
+Hay 2 maneras de presentarlo en la tesis:
+
+**Opción A (simple)**: Documentar la decisión:
+> "Se usaron los mismos hiperparámetros para los 3 encoders para aislar el efecto del pre-entrenamiento. Esto puede favorecer modelos cuyo LR óptimo coincide con 2e-5."
+
+**Opción B (rigurosa)**: Pequeño barrido por modelo:
+```bash
+for lr in 1e-5 2e-5 3e-5; do
+    python -m src.training.train model=maria model.learning_rate=$lr data.seed=42
+done
+```
+Y elegir el mejor por `val/loss`. Triplica el tiempo pero es más defendible académicamente.
+
+## Tiempo estimado
+
+| Configuración | Tiempo en M1 (MPS, fp32) | Tiempo en GPU (RTX 3060+) |
+|---------------|--------------------------|-----------------------------|
+| Smoke test (3 modelos, 1 batch) | 1-2 min | 1-2 min |
+| 1 modelo, 10 epochs | ~2-3 horas | ~30 min |
+| 3 modelos × 1 semilla | ~6-9 horas | ~1.5 horas |
+| **3 modelos × 3 semillas (recomendado tesis)** | **~18-27 horas** | **~4-5 horas** |
+| Reporte | ~5 segundos | ~5 segundos |
 
 ## Interpretación de resultados
 
 ### Si ConfliBERT gana en TODOS los ejes
-- Confirma tu hipótesis: el pre-entreno especializado en política es valioso
+- Confirma la hipótesis: pre-entreno especializado es valioso para política colombiana
 - Justifica usarlo como modelo final
 
 ### Si ConfliBERT pierde en algunos ejes
-- Hipótesis matizada: ConfliBERT es mejor en X, pero MarIA es mejor en Y
+- Hipótesis matizada: ConfliBERT mejor en X, MarIA mejor en Y
 - Posibles razones:
-  - MarIA tiene más datos generales → mejor con vocabulario amplio (ej: ciencia, economía)
-  - ConfliBERT puede tener sesgo hacia el conflicto militar
+  - MarIA: más datos generales → mejor en vocabulario amplio
+  - ConfliBERT: puede tener sesgo hacia el conflicto militar
+  - Algún eje específico (ej: globalismo) puede beneficiarse de exposición a textos económicos generales
 
-### Si BETO gana en algunos
-- BETO tiene buen balance — útil cuando el otro está sobreajustado al dominio
-
-### Si los 3 son similares (R² ±0.05)
+### Si los 3 son similares (R² ±0.05 con multi-seed)
 - El encoder no es el cuello de botella
-- Posible problema: dataset pequeño o labels ruidosos
-- Considerar más datos o mejores labels antes de cambiar arquitectura
+- Posibles causas: dataset pequeño, labels ruidosos, ejes con poca varianza
+- Antes de cambiar arquitectura: más datos o mejor codebook
+
+### Diferencias dentro del ruido (sin multi-seed)
+Si solo corres 1 semilla, la diferencia entre R²=0.42 y R²=0.39 **puede ser ruido**. Con 1145 muestras políticas y test=15%, el test set tiene ~170 ejemplos — diferencias <0.05 no son confiables. **Por eso multi-seed es importante para la tesis.**
 
 ## Solución de problemas
 
 ### Out of memory
-Reducir batch size:
-```bash
-python scripts/benchmark.py --max-epochs 10
-# O modificar configs/data/default.yaml: batch_size: 8
-```
+- Reducir batch: editar `configs/data/default.yaml`: `batch_size: 8`
+- Reducir epochs: `python scripts/benchmark.py --max-epochs 5`
 
 ### Un modelo siempre falla con error de descarga
-Algunos modelos requieren login en HuggingFace. Verificar:
+Algunos modelos en HuggingFace requieren login:
 ```bash
 huggingface-cli login
 ```
@@ -226,36 +280,26 @@ huggingface-cli login
 ### Quiero re-entrenar solo uno
 ```bash
 # Borrar métricas anteriores
-rm -rf logs/benchmark/confliberto/
+rm -rf logs/benchmark/confliberto__seed42/
 
 # Volver a entrenar solo ese
-python scripts/benchmark.py --models confliberto
+python scripts/benchmark.py --models confliberto --seeds 42
 ```
 
 ### El CSV / gráficos no se generan
-Verificar que matplotlib está instalado:
 ```bash
 pip install matplotlib
 ```
 
-## Para la tesis
+### Quiero ver el log de una corrida específica
+```bash
+tail -f logs/benchmark/confliberto__seed42/stdout.log
+```
 
-El benchmark genera evidencia empírica para:
+### Lightning quiere graficar con val/loss y se queja
+El filename del checkpoint está como `ideovect-epoch{epoch:02d}` (sin `val/loss`) para evitar problemas con el `/`. Si quieres incluir val_loss en el nombre, cámbialo a `ideovect-{val_loss:.4f}` (guion bajo, no slash).
 
-1. **Sección de Metodología**: explicar el diseño del benchmark
-2. **Sección de Resultados**: mostrar la tabla comparativa y los gráficos
-3. **Sección de Discusión**: analizar por qué ConfliBERT es mejor (o no)
-4. **Apéndice**: incluir el CSV completo para reproducibilidad
-
-El reporte Markdown se puede convertir a LaTeX o Word fácilmente.
-
-## Cuándo correrlo
-
-- **Después** del paso 4 (filtering) — necesitas el dataset limpio
-- **Antes** de elegir el modelo final — el benchmark decide qué encoder usar
-- **Antes** de cualquier experimentación con hiperparámetros — primero asegurar que el encoder es óptimo
-
-## Extensión: comparar más modelos
+## Extensión: añadir más encoders
 
 Para añadir un cuarto modelo (ej: `xlm-roberta-base`):
 
@@ -263,13 +307,44 @@ Para añadir un cuarto modelo (ej: `xlm-roberta-base`):
 ```yaml
 model_name: "FacebookAI/xlm-roberta-base"
 encoder_alias: "xlmr"
-# (resto igual a los demás)
+num_axes: 8
+learning_rate: 2e-5
+dropout: 0.1
+weight_decay: 0.01
+warmup_ratio: 0.1
+freeze_encoder_epochs: 0
+use_politicity_head: false
 ```
 
-2. Añadir `"xlmr"` a `AVAILABLE_MODELS` en `scripts/benchmark.py`
+2. Añadirlo a `src/benchmark/registry.py`:
+```python
+MODEL_REGISTRY = {
+    "confliberto": "...",
+    "maria": "...",
+    "beto": "...",
+    "xlmr": "FacebookAI/xlm-roberta-base",  # nuevo
+}
+```
 
 3. Correr:
 ```bash
 python scripts/benchmark.py --models xlmr
 python scripts/compare_models.py
 ```
+
+## Para la tesis
+
+El benchmark genera evidencia empírica para:
+
+1. **Metodología**: explicar el diseño (splits fijos, multi-seed, mismos HP, scheduler estándar)
+2. **Resultados**: tabla comparativa + gráficos con errorbars
+3. **Discusión**: análisis de por qué cada modelo gana en ciertos ejes
+4. **Limitaciones**: declarar mismos HP, tamaño del dataset, ejes con baja varianza
+5. **Apéndice**: CSV completo + git commit para reproducibilidad
+
+## Cuándo correrlo
+
+- **Después** del paso 4 (filtering) — necesitas dataset limpio
+- **Después** de `prepare_splits.py` — para tener splits fijos
+- **Antes** de elegir el modelo final del proyecto
+- **Antes** de cualquier experimentación con hiperparámetros

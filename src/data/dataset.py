@@ -11,20 +11,28 @@ from src.models.ideovect_model import AXIS_NAMES
 
 
 class IdeoGraphDataset(Dataset):
-    """Carga noticias etiquetadas y las tokeniza para ConfliBERT.
+    """Carga noticias etiquetadas y las tokeniza para ConfliBERT/BETO/MarIA.
 
-    Formato esperado en data/interim/ (un JSON por línea — JSONL):
+    Formato esperado en data/interim/ (un JSON por línea — JSONL).
+    Los scores de los 8 ejes están en el ROOT del objeto, no anidados:
+
         {
             "text": "El presidente anunció...",
             "is_political": 1,
-            "labels": {
-                "personalismo": 0.72,
-                "institucionalismo": 0.15,
-                ...
-            }
+            "personalismo": 0.72,
+            "institucionalismo": 0.15,
+            "populismo": 0.45,
+            "doctrinarismo": 0.05,
+            "soberanismo": 0.30,
+            "globalismo": 0.10,
+            "conservadurismo": 0.05,
+            "progresismo": 0.20
         }
 
-    Los scores en labels deben estar normalizados a [0, 1].
+    Los scores deben estar normalizados a [0, 1].
+
+    Por retrocompatibilidad también acepta el formato anidado con
+    `{"labels": {"personalismo": 0.72, ...}}`.
     """
 
     def __init__(
@@ -63,10 +71,16 @@ class IdeoGraphDataset(Dataset):
             return_tensors="pt",
         )
 
-        # Etiquetas de los 8 ejes (en orden canónico)
-        label_dict = sample.get("labels", {})
+        # Etiquetas de los 8 ejes (en orden canónico).
+        # Soporta dos formatos:
+        # 1. Scores en root: sample["personalismo"], sample["institucionalismo"], ...
+        # 2. Scores anidados: sample["labels"]["personalismo"], ... (retrocompatibilidad)
+        nested = sample.get("labels", {})
         labels = torch.tensor(
-            [label_dict.get(axis, 0.0) for axis in AXIS_NAMES],
+            [
+                float(sample.get(axis, nested.get(axis, 0.0)))
+                for axis in AXIS_NAMES
+            ],
             dtype=torch.float32,
         )
 

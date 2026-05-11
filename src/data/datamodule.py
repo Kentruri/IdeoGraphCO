@@ -1,19 +1,41 @@
-"""LightningDataModule para el pipeline de datos de IdeoGraphCO."""
+"""LightningDataModule para el pipeline de datos de IdeoGraphCO.
 
+Soporta dos modos de splits:
+1. **Splits desde disco** (`splits_path=<archivo>`): pre-computados, garantiza
+   que cualquier corrida futura use exactamente los mismos índices. Necesario
+   para comparar modelos en un benchmark.
+2. **Random split en runtime**: divide aleatoriamente con semilla determinista.
+   Más simple para experimentos rápidos pero los índices cambian si se añaden
+   muestras al JSONL.
+
+Para el benchmark se recomienda el modo 1. Ver `scripts/prepare_splits.py`.
+"""
+
+import json
+import random
 from pathlib import Path
 
 import lightning as L
-from torch.utils.data import DataLoader, random_split
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, Subset, random_split
 
 from src.data.dataset import IdeoGraphDataset
 
 
-class IdeoGraphDataModule(L.LightningDataModule):
-    """Orquesta carga, splits y DataLoaders.
+def _seed_worker(worker_id: int) -> None:
+    """Siembra deterministicamente cada worker de PyTorch.
 
-    Espera un archivo JSONL en `data_path` con el formato definido
-    en IdeoGraphDataset.
+    Sin esto, cada worker hace su propia siembra automática y el orden de
+    batches puede variar entre corridas con la misma seed global.
     """
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
+class IdeoGraphDataModule(L.LightningDataModule):
+    """Orquesta carga, splits y DataLoaders."""
 
     def __init__(
         self,
@@ -26,6 +48,7 @@ class IdeoGraphDataModule(L.LightningDataModule):
         val_split: float = 0.15,
         test_split: float = 0.15,
         seed: int = 42,
+        splits_path: str | Path | None = None,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -39,10 +62,11 @@ class IdeoGraphDataModule(L.LightningDataModule):
         self.val_split = val_split
         self.test_split = test_split
         self.seed = seed
+        self.splits_path = Path(splits_path) if splits_path else None
 
-        self.train_ds: IdeoGraphDataset | None = None
-        self.val_ds: IdeoGraphDataset | None = None
-        self.test_ds: IdeoGraphDataset | None = None
+        self.train_ds: torch.utils.data.Dataset | None = None
+        self.val_ds: torch.utils.data.Dataset | None = None
+        self.test_ds: torch.utils.data.Dataset | None = None
 
     def setup(self, stage: str | None = None) -> None:
         """Carga el dataset completo y lo divide en train/val/test."""
@@ -52,16 +76,32 @@ class IdeoGraphDataModule(L.LightningDataModule):
             max_length=self.max_length,
         )
 
-        total = len(full_dataset)
-        test_size = int(total * self.test_split)
-        val_size = int(total * self.val_split)
-        train_size = total - val_size - test_size
+        if self.splits_path and self.splits_path.exists():
+            # Modo 1: splits pre-computados desde disco
+            with open(self.splits_path, encoding="utf-8") as f:
+                splits = json.load(f)
+            self.train_ds = Subset(full_dataset, splits["train"])
+            self.val_ds = Subset(full_dataset, splits["val"])
+            self.test_ds = Subset(full_dataset, splits["test"])
+        else:
+            # Modo 2: random_split con seed determinista
+            total = len(full_dataset)
+            test_size = int(total * self.test_split)
+            val_size = int(total * self.val_split)
+            train_size = total - val_size - test_size
 
-        self.train_ds, self.val_ds, self.test_ds = random_split(
-            full_dataset,
-            [train_size, val_size, test_size],
-            generator=__import__("torch").Generator().manual_seed(self.seed),
-        )
+            generator = torch.Generator().manual_seed(self.seed)
+            self.train_ds, self.val_ds, self.test_ds = random_split(
+                full_dataset,
+                [train_size, val_size, test_size],
+                generator=generator,
+            )
+
+    def _build_generator(self) -> torch.Generator:
+        """Generator determinista para shuffling del DataLoader."""
+        g = torch.Generator()
+        g.manual_seed(self.seed)
+        return g
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -70,6 +110,9 @@ class IdeoGraphDataModule(L.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            worker_init_fn=_seed_worker,
+            generator=self._build_generator(),
+            persistent_workers=self.num_workers > 0,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -79,6 +122,8 @@ class IdeoGraphDataModule(L.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            worker_init_fn=_seed_worker,
+            persistent_workers=self.num_workers > 0,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -88,4 +133,6 @@ class IdeoGraphDataModule(L.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            worker_init_fn=_seed_worker,
+            persistent_workers=self.num_workers > 0,
         )

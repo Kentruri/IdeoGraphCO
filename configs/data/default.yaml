@@ -1,5 +1,5 @@
 # Configuración del pipeline de datos
-data_path: "data/interim/labeled_news.jsonl"  # ruta al JSONL etiquetado
+data_path: "data/interim/labeled_news_clean.jsonl"  # ruta al JSONL etiquetado y filtrado
 model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
 max_length: 512          # tokens máximos por noticia (límite de BERT)
 
@@ -12,3 +12,5 @@ pin_memory: true
 val_split: 0.15
 test_split: 0.15
 seed: 42
+
+splits_path: "data/processed/splits.json"
