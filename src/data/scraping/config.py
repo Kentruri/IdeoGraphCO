@@ -1,17 +1,18 @@
-"""Configuración de Newspaper4k para scraping de medios colombianos."""
+"""Configuración de headers HTTP para scraping de medios colombianos."""
 
-from newspaper import Config
+import random
+
+# User-Agents reales y recientes para rotación (Chrome, Firefox, Safari, Edge)
+USER_AGENTS: list[str] = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
+]
 
 
-def get_newspaper_config() -> Config:
-    """Configura Newspaper4k con User-Agent real para evitar bloqueos 403."""
-    config = Config()
-    config.browser_user_agent = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    )
-    config.request_timeout = 15
-    config.language = "es"
-    config.memoize_articles = True
-    return config
+def get_random_user_agent() -> str:
+    """Devuelve un User-Agent aleatorio para rotación."""
+    return random.choice(USER_AGENTS)

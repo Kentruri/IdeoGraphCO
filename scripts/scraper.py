@@ -1,10 +1,13 @@
-"""Scraper de noticias colombianas usando Newspaper4k.
+"""Scraper de noticias políticas colombianas con Trafilatura.
+
+Extrae únicamente noticias de secciones políticas usando:
+- RSS feeds de secciones políticas
+- Sitemaps filtrados por URL
+- Crawl directo para medios 100% políticos
 
 Uso:
     python scripts/scraper.py
     python scripts/scraper.py --categories nacional independiente --max-articles 100
-    python scripts/scraper.py --use-rss --max-articles 200
-    python scripts/scraper.py --categories institucional --max-articles 30
     python scripts/scraper.py --sources eltiempo lasillavacia --max-articles 50
 """
 
@@ -13,14 +16,10 @@ import json
 import logging
 from collections import Counter
 
-from src.data.scraping import get_newspaper_config, scrape_rss, scrape_source
-from src.data.sources import (
-    ALL_SOURCES,
-    CATEGORIES,
-    RSS_FEEDS,
-    SOURCE_CATEGORY,
-    SOURCES_CONFIG,
-)
+from tqdm import tqdm
+
+from src.data.scraping import get_scraped_count, scrape_source
+from src.data.sources import CATEGORIES, SOURCES, SOURCES_BY_CATEGORY
 from src.paths import RAW_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -34,39 +33,34 @@ def resolve_sources(categories: list[str] | None, sources: list[str] | None) -> 
     if categories:
         names: list[str] = []
         for cat in categories:
-            if cat in SOURCES_CONFIG:
-                names.extend(SOURCES_CONFIG[cat].keys())
+            if cat in SOURCES_BY_CATEGORY:
+                names.extend(SOURCES_BY_CATEGORY[cat])
             else:
                 logger.warning("Categoría '%s' no reconocida, saltando.", cat)
         return names
-    return list(ALL_SOURCES.keys())
+    return list(SOURCES.keys())
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scraper de noticias colombianas")
+    parser = argparse.ArgumentParser(description="Scraper de noticias políticas colombianas")
     parser.add_argument(
         "--categories",
         nargs="+",
         choices=CATEGORIES,
         default=None,
-        help="Categorías a scrapear: nacional, independiente, institucional, regional, gremial",
+        help="Categorías a scrapear",
     )
     parser.add_argument(
         "--sources",
         nargs="+",
         default=None,
-        help="Fuentes individuales (ej: eltiempo semana lasillavacia)",
+        help="Fuentes individuales (ej: eltiempo lasillavacia)",
     )
     parser.add_argument(
         "--max-articles",
         type=int,
         default=50,
         help="Máximo de artículos por fuente (default: 50)",
-    )
-    parser.add_argument(
-        "--use-rss",
-        action="store_true",
-        help="Usar feeds RSS cuando estén disponibles (más limpio)",
     )
     parser.add_argument(
         "--output",
@@ -77,35 +71,73 @@ def main() -> None:
     args = parser.parse_args()
 
     output_path = RAW_DIR / (args.output or "news.jsonl")
-    config = get_newspaper_config()
-    all_articles: list[dict] = []
     source_names = resolve_sources(args.categories, args.sources)
+    total_sources = len(source_names)
+    total_articles = 0
 
-    for name in source_names:
-        url = ALL_SOURCES.get(name)
-        category = SOURCE_CATEGORY.get(name, "desconocido")
+    print()
+    print("=" * 60)
+    print("  IdeoGraphCO Scraper (Trafilatura)")
+    print(f"  Fuentes: {total_sources} | Máx por fuente: {args.max_articles}")
+    print(f"  Salida: {output_path}")
+    print(f"  BD histórica: {get_scraped_count()} artículos previos")
+    print("=" * 60)
+    print()
 
-        if url is None:
-            logger.warning("Fuente '%s' no reconocida, saltando.", name)
-            continue
+    # Barra de progreso general
+    source_pbar = tqdm(
+        source_names,
+        desc="Progreso total",
+        unit="fuente",
+        position=0,
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} fuentes [{elapsed}<{remaining}] {postfix}",
+    )
 
-        if args.use_rss and name in RSS_FEEDS:
-            articles = scrape_rss(name, RSS_FEEDS[name], category, args.max_articles, config)
-        else:
-            articles = scrape_source(name, url, category, args.max_articles, config)
+    with open(output_path, "a", encoding="utf-8") as f:
+        for name in source_pbar:
+            if name not in SOURCES:
+                logger.warning("Fuente '%s' no reconocida, saltando.", name)
+                continue
 
-        all_articles.extend(articles)
+            source_config = SOURCES[name]
+            source_pbar.set_postfix_str(
+                f"{name} [{source_config['category']}] | {total_articles} artículos totales"
+            )
 
-    # Guardar como JSONL
-    with open(output_path, "w", encoding="utf-8") as f:
-        for article in all_articles:
-            f.write(json.dumps(article, ensure_ascii=False) + "\n")
+            logger.info("[%s] mode=%s", name, source_config["mode"])
+            articles = scrape_source(name, source_config, args.max_articles)
 
-    # Resumen por categoría
-    cat_counts = Counter(a["category"] for a in all_articles)
-    logger.info("Total: %d artículos guardados en %s", len(all_articles), output_path)
-    for cat, count in cat_counts.most_common():
-        logger.info("  [%s]: %d artículos", cat, count)
+            for article in articles:
+                f.write(json.dumps(article, ensure_ascii=False) + "\n")
+                f.flush()
+
+            total_articles += len(articles)
+
+    source_pbar.close()
+
+    # Resumen final
+    print()
+    print("=" * 60)
+    print("  SCRAPING COMPLETADO")
+    print(f"  Artículos nuevos: {total_articles}")
+    print(f"  Total en BD: {get_scraped_count()}")
+    print(f"  Guardados en: {output_path}")
+
+    try:
+        cat_counts: Counter[str] = Counter()
+        with open(output_path, encoding="utf-8") as f:
+            for line in f:
+                article = json.loads(line)
+                cat_counts[article["category"]] += 1
+        print("-" * 40)
+        print("  Desglose por categoría:")
+        for cat, count in cat_counts.most_common():
+            print(f"    [{cat}]: {count} artículos")
+    except Exception:
+        pass
+
+    print("=" * 60)
+    print()
 
 
 if __name__ == "__main__":
