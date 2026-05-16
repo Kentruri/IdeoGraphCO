@@ -1,14 +1,14 @@
 """LightningDataModule para el pipeline de datos de IdeoGraphCO.
 
 Soporta dos modos de splits:
-1. **Splits desde disco** (`splits_path=<archivo>`): pre-computados, garantiza
-   que cualquier corrida futura use exactamente los mismos índices. Necesario
-   para comparar modelos en un benchmark.
-2. **Random split en runtime**: divide aleatoriamente con semilla determinista.
-   Más simple para experimentos rápidos pero los índices cambian si se añaden
-   muestras al JSONL.
+1. **Splits desde disco** (`splits_path=<archivo>`): pre-computados a nivel
+   ARTÍCULO. Si la estrategia de chunking es sliding_window, este módulo
+   mapea automáticamente índices de artículo → índices de chunk para garantizar
+   que TODOS los chunks de un mismo artículo van al mismo split.
+2. **Random split en runtime**: divide aleatoriamente con semilla determinista
+   (a nivel chunk en este caso — menos riguroso, usa solo para experimentos rápidos).
 
-Para el benchmark se recomienda el modo 1. Ver `scripts/prepare_splits.py`.
+Soporta `chunking_strategy` ("truncate" o "sliding_window") que se pasa al Dataset.
 """
 
 import json
@@ -24,11 +24,7 @@ from src.data.dataset import IdeoGraphDataset
 
 
 def _seed_worker(worker_id: int) -> None:
-    """Siembra deterministicamente cada worker de PyTorch.
-
-    Sin esto, cada worker hace su propia siembra automática y el orden de
-    batches puede variar entre corridas con la misma seed global.
-    """
+    """Siembra deterministicamente cada worker de PyTorch."""
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
@@ -49,6 +45,10 @@ class IdeoGraphDataModule(L.LightningDataModule):
         test_split: float = 0.15,
         seed: int = 42,
         splits_path: str | Path | None = None,
+        # Parámetros de chunking (pasan al Dataset)
+        chunking_strategy: str = "truncate",
+        chunk_size: int = 512,
+        chunk_stride: int = 384,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -64,6 +64,10 @@ class IdeoGraphDataModule(L.LightningDataModule):
         self.seed = seed
         self.splits_path = Path(splits_path) if splits_path else None
 
+        self.chunking_strategy = chunking_strategy
+        self.chunk_size = chunk_size
+        self.chunk_stride = chunk_stride
+
         self.train_ds: torch.utils.data.Dataset | None = None
         self.val_ds: torch.utils.data.Dataset | None = None
         self.test_ds: torch.utils.data.Dataset | None = None
@@ -74,17 +78,28 @@ class IdeoGraphDataModule(L.LightningDataModule):
             data_path=self.data_path,
             model_name=self.model_name,
             max_length=self.max_length,
+            chunking_strategy=self.chunking_strategy,
+            chunk_size=self.chunk_size,
+            chunk_stride=self.chunk_stride,
         )
 
         if self.splits_path and self.splits_path.exists():
-            # Modo 1: splits pre-computados desde disco
+            # Modo 1: splits a-nivel-artículo desde disco
             with open(self.splits_path, encoding="utf-8") as f:
                 splits = json.load(f)
-            self.train_ds = Subset(full_dataset, splits["train"])
-            self.val_ds = Subset(full_dataset, splits["val"])
-            self.test_ds = Subset(full_dataset, splits["test"])
+
+            # Mapear índices de artículo → índices de chunk.
+            # Para truncate: 1 chunk = 1 artículo, así que es la identidad.
+            # Para sliding_window: un artículo se expande a múltiples chunks.
+            train_chunks = full_dataset.chunk_indices_for_articles(splits["train"])
+            val_chunks = full_dataset.chunk_indices_for_articles(splits["val"])
+            test_chunks = full_dataset.chunk_indices_for_articles(splits["test"])
+
+            self.train_ds = Subset(full_dataset, train_chunks)
+            self.val_ds = Subset(full_dataset, val_chunks)
+            self.test_ds = Subset(full_dataset, test_chunks)
         else:
-            # Modo 2: random_split con seed determinista
+            # Modo 2: random_split a nivel chunk (menos riguroso si hay sliding window)
             total = len(full_dataset)
             test_size = int(total * self.test_split)
             val_size = int(total * self.val_split)
@@ -98,7 +113,6 @@ class IdeoGraphDataModule(L.LightningDataModule):
             )
 
     def _build_generator(self) -> torch.Generator:
-        """Generator determinista para shuffling del DataLoader."""
         g = torch.Generator()
         g.manual_seed(self.seed)
         return g
