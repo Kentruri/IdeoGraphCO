@@ -1,7 +1,9 @@
 """Limpieza de texto de artículos scrapeados.
 
 Remueve "frases parásito", firmas de periodistas, emails, CTAs,
-footers de marca y otros fragmentos que no son contenido editorial.
+footers de marca, cookie banners, paywalls y otros fragmentos
+que no son contenido editorial.
+
 NO convierte a minúsculas (el modelo ConfliBERT es Cased).
 """
 
@@ -45,6 +47,67 @@ _SOCIAL_CTA_PATTERN = re.compile(
 )
 
 # ---------------------------------------------------------------------------
+# Cookie banners (versión completa)
+# ---------------------------------------------------------------------------
+
+# Bloque completo: desde "En este portal utilizamos..." hasta el final del párrafo
+_COOKIE_BANNER_PATTERN = re.compile(
+    r"En este portal utilizamos datos de navegación.*?"
+    r"(?:aceptando esta utilización\.?|Puede conocer cómo deshabilitarlas[^\n]*|aquí)",
+    re.DOTALL,
+)
+
+# Restos del cookie banner cuando trafilatura captura solo el final
+_COOKIE_BANNER_REMNANT_PATTERN = re.compile(
+    r"(?:^|\n)\s*"
+    r"Puede conocer cómo deshabilitarlas u obtener más información\s*\n"
+    r"\s*aquí\s*\n",
+    re.IGNORECASE,
+)
+
+# Restos sueltos de UI de cookies/legales
+_UI_REMNANT_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"aquí"  # palabra "aquí" sola en una línea
+    r"|Aceptar(?:\s+y\s+continuar)?"
+    r"|Continuar\s+sin\s+aceptar"
+    r"|Configuración\s+de\s+cookies"
+    r"|Política\s+de\s+privacidad"
+    r"|Términos\s+y\s+condiciones"
+    r")\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# ---------------------------------------------------------------------------
+# Paywalls / suscripción
+# ---------------------------------------------------------------------------
+
+_PAYWALL_PATTERN = re.compile(
+    r"(?:"
+    r"Ya tienes una cuenta vinculada a [A-Z\s]+,\s*por favor inicia sesión[^\n]*"
+    r"|¡Hola! Parece que has alcanzado tu límite[^\n]*"
+    r"|¿Quieres seguir disfrutando de este y otros beneficios[^\n]*"
+    r"|Adquiere el plan de suscripción[^\n]*"
+    r"|¡Hola! Haz? excedido el máximo de peticiones[^\n]*"
+    r"|Para más información continua navegando en[^\n]*"
+    r")",
+)
+
+# Mensajes de error y UI de chatbot
+_UI_NOISE_PATTERN = re.compile(
+    r"(?:"
+    r"Error \d{3}\s*\n[^\n]*"
+    r"|Estamos resolviendo el problema[^\n]*"
+    r"|Procesando tu pregunta[^\n]*"
+    r"|¿Sabías que registrándote en nuestro portal[^\n]*"
+    r"|Con el envío de tus consultas, aceptas los Términos[^\n]*"
+    r"|Recuerda que las respuestas generadas pueden presentar inexactitudes[^\n]*"
+    r"|De acuerdo con las políticas de la IA[^\n]*"
+    r"|no es posible responder a las preguntas relacionadas[^\n]*"
+    r")",
+)
+
+# ---------------------------------------------------------------------------
 # Firmas de periodistas al final del artículo
 # ---------------------------------------------------------------------------
 
@@ -74,70 +137,23 @@ _BRAND_FOOTER_PATTERN = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# Cookie banners y prompts de paywall (común en El Tiempo y otros medios)
+# Listings de noticias relacionadas (cuando trafilatura captura mal el artículo)
 # ---------------------------------------------------------------------------
 
-# Bloque de cookie banner: desde "En este portal utilizamos..." hasta el final
-# del bloque (suele ser un párrafo). Usa lookhead para no comerse contenido real.
-_COOKIE_BANNER_PATTERN = re.compile(
-    r"En este portal utilizamos datos de navegación.*?"
-    r"(?:aceptando esta utilización\.?|Puede conocer cómo deshabilitarlas[^\n]*|aquí)",
-    re.DOTALL,
-)
-
-# Prompts de paywall / suscripción
-_PAYWALL_PATTERN = re.compile(
-    r"(?:"
-    r"Ya tienes una cuenta vinculada a [A-Z\s]+,\s*por favor inicia sesión[^\n]*"
-    r"|¡Hola! Parece que has alcanzado tu límite[^\n]*"
-    r"|¿Quieres seguir disfrutando de este y otros beneficios[^\n]*"
-    r"|Adquiere el plan de suscripción[^\n]*"
-    r"|¡Hola! Haz? excedido el máximo de peticiones[^\n]*"
-    r"|Para más información continua navegando en[^\n]*"
-    r")",
-)
-
-# Mensajes de error y UI de chatbot
-_UI_NOISE_PATTERN = re.compile(
-    r"(?:"
-    r"Error \d{3}\s*\n[^\n]*"
-    r"|Estamos resolviendo el problema[^\n]*"
-    r"|Procesando tu pregunta[^\n]*"
-    r"|¿Sabías que registrándote en nuestro portal[^\n]*"
-    r"|Con el envío de tus consultas, aceptas los Términos[^\n]*"
-    r"|Recuerda que las respuestas generadas pueden presentar inexactitudes[^\n]*"
-    r"|De acuerdo con las políticas de la IA[^\n]*"
-    r"|no es posible responder a las preguntas relacionadas[^\n]*"
-    r")",
-)
-
-# ---------------------------------------------------------------------------
-# Listings de noticias relacionadas (página de homepage en vez de artículo)
-# Cuando trafilatura captura mal el artículo y trae un listado de titulares.
-# ---------------------------------------------------------------------------
-
-# Marcadores que indican el inicio de una sección de listado (cortar de aquí)
 _SECTION_CUTOFF_PATTERN = re.compile(
     r"\n\s*"
     r"(?:Más para ver|Nuestro mundo|Más noticias|Lo más leído|Lo último|"
     r"Más sobre|También en [A-Z]|Tendencias|En portada|Otras noticias|"
     r"Horóscopo\s*\n|Crucigrama\s*\n|"
-    # Bloques de promoción de El Tiempo (paywall)
     r"BOLETINES EL TIEMPO|EL TIEMPO GOOGLE NEWS|EL TIEMPO WHATSAPP|"
     r"EL TIEMPO APP|SUSCRÍBETE AL DIGITAL|"
-    # Footers de redes
     r"Sigue toda la información de [A-Z][^\n]{1,50} en Facebook|"
     r"Conforme a los criterios de\s*$)"
     r".*$",
     re.DOTALL,
 )
 
-# ---------------------------------------------------------------------------
-# Inicio de artículo: marcador que indica donde empieza el contenido real.
-# Si encontramos "Noticia\n" o "Análisis\n" al inicio, descartamos todo lo previo.
-# Útil para El Tiempo que prefija con cookie banner + chatbot UI antes del artículo.
-# ---------------------------------------------------------------------------
-
+# Marcador de inicio de artículo (El Tiempo prefija con "Noticia\n")
 _ARTICLE_START_MARKER = re.compile(
     r"\A.*?\n\s*"
     r"(?:Noticia|Análisis|Opinión|Editorial|Reportaje|Crónica|Entrevista|"
@@ -146,8 +162,11 @@ _ARTICLE_START_MARKER = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# Nombres de autores repetidos en el cuerpo (bylines sueltas)
+# Limpieza de espacios en blanco excesivos
 # ---------------------------------------------------------------------------
+
+_MULTI_NEWLINES = re.compile(r"\n{3,}")
+_TRAILING_SPACES = re.compile(r"[ \t]+$", re.MULTILINE)
 
 
 def _remove_author_lines(text: str, authors: list[str]) -> str:
@@ -165,58 +184,56 @@ def _remove_author_lines(text: str, authors: list[str]) -> str:
     return "\n".join(cleaned)
 
 
-# ---------------------------------------------------------------------------
-# Limpieza de espacios en blanco excesivos
-# ---------------------------------------------------------------------------
-
-_MULTI_NEWLINES = re.compile(r"\n{3,}")
-_TRAILING_SPACES = re.compile(r"[ \t]+$", re.MULTILINE)
-
-
 def clean_article_text(text: str, authors: list[str] | None = None) -> str:
     """Limpia el texto de un artículo scrapeado.
 
     Aplica en orden:
-    1. Cookie banners de medios
-    2. Prompts de paywall / suscripción
-    3. UI de chatbot y errores
-    4. Bloques CTA ("LEA TAMBIÉN\n\ntítulo", "Lea:", "Ver más:")
-    5. Frases CTA inline
-    6. CTAs de WhatsApp/redes sociales
-    7. Firmas de periodista al final
-    8. Emails al final
-    9. Footers de marca (PORTAFOLIO, etc.)
-    10. Listings de noticias relacionadas (corte de sección)
-    11. Líneas con solo el nombre del autor
-    12. Normalización de espacios
+    0. Marcador de inicio: si hay "Noticia\n"/"Análisis\n", descartar todo lo previo
+    1. Cookie banners completos
+    2. Restos de cookie banners
+    3. Restos de UI legal (líneas con "aquí", "Aceptar", etc.)
+    4. Paywalls y prompts de suscripción
+    5. UI de chatbot y errores
+    6. Bloques CTA ("LEA TAMBIÉN\n\ntítulo", "Lea:", "Ver más:")
+    7. Frases CTA inline
+    8. CTAs de WhatsApp/redes sociales
+    9. Firmas de periodista al final
+    10. Emails al final
+    11. Footers de marca
+    12. Listings de noticias relacionadas (corte de sección)
+    13. Líneas con solo el nombre del autor
+    14. Normalización de espacios
     """
-    # 0. Si hay marcador de inicio de artículo ("Noticia\n", "Análisis\n", etc.),
-    # descartar todo lo previo (cookie banner, paywall, UI de chatbot).
+    # 0. Marcador de inicio
     text = _ARTICLE_START_MARKER.sub("", text, count=1)
 
-    # 1-3. Limpieza preliminar de UI/banners restantes
+    # 1-3. Cookie banners
     text = _COOKIE_BANNER_PATTERN.sub("", text)
+    text = _COOKIE_BANNER_REMNANT_PATTERN.sub("\n", text)
+    text = _UI_REMNANT_PATTERN.sub("", text)
+
+    # 4-5. Paywall y UI de chatbot
     text = _PAYWALL_PATTERN.sub("", text)
     text = _UI_NOISE_PATTERN.sub("", text)
 
-    # 4-6. CTAs
+    # 6-8. CTAs
     text = _CTA_BLOCK_PATTERN.sub("", text)
     text = _CTA_INLINE_PATTERN.sub("", text)
     text = _SOCIAL_CTA_PATTERN.sub("", text)
 
-    # 7-9. Firmas y footers al final
+    # 9-11. Firmas y footers al final
     text = _SIGNATURE_PATTERN.sub("", text)
     text = _EMAIL_TAIL_PATTERN.sub("", text)
     text = _BRAND_FOOTER_PATTERN.sub("", text)
 
-    # 10. Cortar desde "Más para ver", "Nuestro mundo", etc.
+    # 12. Cortar desde "Más para ver", "BOLETINES EL TIEMPO", etc.
     text = _SECTION_CUTOFF_PATTERN.sub("", text)
 
-    # 11. Nombres de autores sueltos
+    # 13. Nombres de autores sueltos
     if authors:
         text = _remove_author_lines(text, authors)
 
-    # 12. Normalizar espacios
+    # 14. Normalizar espacios
     text = _TRAILING_SPACES.sub("", text)
     text = _MULTI_NEWLINES.sub("\n\n", text)
     text = text.strip()

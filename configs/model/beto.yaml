@@ -1,0 +1,13 @@
+# BETO — BERT-base español de la Universidad de Chile
+# El "BERT español estándar". Baseline más usado en NLP de español.
+# Comparar contra ConfliBERT muestra el valor del pre-entreno especializado.
+model_name: "dccuchile/bert-base-spanish-wwm-cased"
+encoder_alias: "beto"
+num_axes: 8
+
+learning_rate: 2e-5
+dropout: 0.1
+weight_decay: 0.01
+warmup_ratio: 0.1
+freeze_encoder_epochs: 0
+use_politicity_head: false

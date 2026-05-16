@@ -2,7 +2,15 @@
 max_epochs: 10
 accelerator: "auto"       # detecta GPU/MPS/CPU automáticamente
 devices: 1
-precision: "16-mixed"     # mixed precision para ahorrar VRAM
+
+# precision="auto" → fp32 en MPS/CPU (fp16 tiene bugs en MPS),
+# 16-mixed en CUDA. Resolución en train.py:_resolve_precision().
+# Si tienes GPU NVIDIA reciente (Ampere/Hopper), considerar "bf16-mixed".
+precision: "auto"
+
+# fast_dev_run: si true, corre 1 batch de train/val/test para smoke-test.
+# Útil para validar la pipeline sin gastar horas de cómputo.
+fast_dev_run: false
 
 # Callbacks
 early_stopping:
@@ -14,7 +22,7 @@ model_checkpoint:
   monitor: "val/loss"
   mode: "min"
   save_top_k: 2
-  filename: "ideovect-{epoch:02d}-{val/loss:.4f}"
+  filename: "ideovect-epoch{epoch:02d}"
 
 # Logging
 log_every_n_steps: 10
