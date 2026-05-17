@@ -358,6 +358,257 @@ SOURCES: dict[str, dict] = {
         "url_filters": [],
         "rss_feeds": [],
     },
+
+    # =======================================================================
+    # AMPLIACIÓN — fuentes adicionales para refuerzo de diversidad ideológica
+    # =======================================================================
+
+    # --- Nacionales y económicos ---
+    "larepublica": {
+        "url": "https://www.larepublica.co",
+        "category": "nacional",
+        "mode": "sitemap",
+        "url_filters": [
+            "/economia/", "/inside/", "/finanzas/",
+            "/empresas/", "/analisis/", "/caja-fuerte/",
+        ],
+        "rss_feeds": [],  # usa sitemaps mensuales (gzip) como fuente prioritaria
+    },
+    "valoraanalitik": {
+        "url": "https://www.valoraanalitik.com",
+        "category": "nacional",
+        "mode": "sitemap",
+        "url_filters": [
+            "/economia/", "/energia/", "/infraestructura/",
+            "/mercados/", "/politica/",
+        ],
+        "rss_feeds": ["https://www.valoraanalitik.com/feed/"],
+    },
+    "dataifx": {
+        "url": "https://www.dataifx.com",
+        "category": "nacional",
+        "mode": "sitemap",
+        "url_filters": [
+            "/noticias/", "/macroeconomia/", "/dolar/",
+            "/mercados-y-finanzas/",
+        ],
+        "rss_feeds": ["https://www.dataifx.com/rss.xml"],
+    },
+    "infobae_colombia": {
+        "url": "https://www.infobae.com/colombia/",
+        "category": "nacional",
+        "mode": "sitemap",
+        "url_filters": [
+            "/colombia/noticias/politica/", "/america/colombia/", "/economia/",
+        ],
+        "rss_feeds": [],
+    },
+    "kienyke": {
+        "url": "https://www.kienyke.com",
+        "category": "nacional",
+        "mode": "sitemap",
+        "url_filters": ["/politica/", "/kien-es-kien/", "/politica-y-poder/"],
+        "rss_feeds": ["https://www.kienyke.com/feed"],
+    },
+    "publimetro_co": {
+        "url": "https://www.publimetro.co",
+        "category": "nacional",
+        "mode": "sitemap",
+        "url_filters": ["/noticias/", "/politica/", "/bogota/"],
+        "rss_feeds": [],
+    },
+
+    # --- Independientes (territoriales, investigación, alternativos) ---
+    "rutasdelconflicto": {
+        "url": "https://rutasdelconflicto.com",
+        "category": "independiente",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://rutasdelconflicto.com/feed/"],
+    },
+    "cerosetenta": {
+        "url": "https://cerosetenta.uniandes.edu.co",
+        "category": "independiente",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://cerosetenta.uniandes.edu.co/feed/"],
+    },
+    "ligacontraelsilencio": {
+        "url": "https://ligacontraelsilencio.org",
+        "category": "independiente",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://ligacontraelsilencio.org/feed/"],
+    },
+    "tercercanal": {
+        "url": "https://tercercanal.co",
+        "category": "independiente",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "pluralidadz": {
+        "url": "https://pluralidadz.com",
+        "category": "independiente",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://pluralidadz.com/feed/"],
+    },
+    "prensarural": {
+        "url": "https://prensarural.org",
+        "category": "independiente",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://prensarural.org/spip/spip.php?page=backend"],
+    },
+
+    # --- Opinión / think tanks (políticas públicas, balance ideológico) ---
+    "fedesarrollo": {
+        "url": "https://www.fedesarrollo.org.co",
+        "category": "opinion",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "anif": {
+        "url": "https://www.anif.co",
+        "category": "opinion",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "icpcolombia": {
+        "url": "https://www.icpcolombia.org",
+        "category": "opinion",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "cinep": {
+        "url": "https://www.cinep.org.co",
+        "category": "opinion",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "fescol": {
+        "url": "https://colombia.fes.de",
+        "category": "opinion",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+
+    # --- Regionales (dinámicas locales y poderes territoriales) ---
+    "proclamadelcauca": {
+        "url": "https://www.proclamadelcauca.com",
+        "category": "regional",
+        "mode": "sitemap",
+        "url_filters": ["/politica/", "/noticias-cauca/", "/opinion/"],
+        "rss_feeds": ["https://www.proclamadelcauca.com/feed/"],
+    },
+    "diariodelsur": {
+        "url": "https://diariodelsur.com.co",
+        "category": "regional",
+        "mode": "sitemap",
+        "url_filters": ["/politica/", "/nacional/", "/opinion/"],
+        "rss_feeds": [],
+    },
+    "elpilon": {
+        "url": "https://elpilon.com.co",
+        "category": "regional",
+        "mode": "sitemap",
+        "url_filters": ["/politica-pilon/", "/opinion-pilon/", "/economia-pilon/"],
+        "rss_feeds": ["https://elpilon.com.co/feed/"],
+    },
+    "lapatria": {
+        "url": "https://www.lapatria.com",
+        "category": "regional",
+        "mode": "sitemap",
+        "url_filters": ["/politica/", "/economia/", "/nacional/", "/opinion/"],
+        "rss_feeds": [],
+    },
+    "boyacasietedias": {
+        "url": "https://boyacasietedias.com.co",
+        "category": "regional",
+        "mode": "sitemap",
+        "url_filters": ["/noticias/", "/boyaca/", "/opinion/"],
+        "rss_feeds": ["https://boyacasietedias.com.co/feed/"],
+    },
+
+    # --- Gremiales y sindicales (presión corporativa y sindicalismo) ---
+    "asobancaria": {
+        "url": "https://www.asobancaria.com",
+        "category": "gremial",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "sac": {
+        "url": "https://sac.org.co",
+        "category": "gremial",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "fenalco": {
+        "url": "https://www.fenalco.com.co",
+        "category": "gremial",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "colfecar": {
+        "url": "https://colfecar.org.co",
+        "category": "gremial",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "cut": {
+        "url": "https://cut.org.co",
+        "category": "gremial",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://cut.org.co/feed/"],
+    },
+
+    # --- Institucionales (regulación del Estado, datos oficiales) ---
+    "banrep": {
+        "url": "https://www.banrep.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "dane": {
+        "url": "https://www.dane.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "jep": {
+        "url": "https://www.jep.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "fiscalia": {
+        "url": "https://www.fiscalia.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "procuraduria": {
+        "url": "https://www.procuraduria.gov.co",
+        "category": "institucional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
 }
 
 # ---------------------------------------------------------------------------

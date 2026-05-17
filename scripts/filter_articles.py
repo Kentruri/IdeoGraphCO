@@ -25,6 +25,8 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from tqdm import tqdm
+
 # Cargar variables de .env si existe
 try:
     from dotenv import load_dotenv
@@ -34,6 +36,11 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+# Silenciar los logs ruidosos del SDK de Google y httpx para no contaminar
+# la barra de progreso de tqdm. Solo dejamos pasar warnings/errors.
+for noisy in ("google_genai", "google_genai.types", "httpx", "httpcore"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 CURSOR_NAME = ".filter_cursor"
@@ -153,6 +160,14 @@ def main() -> None:
     if not args.dry_run:
         fout = open(output_path, mode, encoding="utf-8")
 
+    pbar = tqdm(
+        total=pending,
+        desc="Filtrando",
+        unit="art",
+        smoothing=0.1,
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
+    )
+
     try:
         with open(input_path, encoding="utf-8") as fin:
             for i, line in enumerate(fin):
@@ -174,8 +189,11 @@ def main() -> None:
                     authors=article.get("authors"),
                 )
 
-                # Si quedó muy corto post-limpieza, descartar sin LLM
-                if len(cleaned_text) < 300:
+                # Si quedó muy corto post-limpieza, descartar sin LLM.
+                # 800 chars ≈ párrafo introductorio + cuerpo mínimo. Por debajo
+                # el artículo suele estar truncado por el scraper y no aporta
+                # contexto suficiente para entrenar.
+                if len(cleaned_text) < 800:
                     discarded += 1
                     categories["too_short_after_clean"] += 1
                     if len(discarded_examples) < 15:
@@ -184,6 +202,8 @@ def main() -> None:
                         )
                     if not args.dry_run:
                         write_cursor(cursor_path, i + 1)
+                    pbar.update(1)
+                    pbar.set_postfix(keep=kept, drop=discarded, err=error_count)
                     continue
 
                 # 2. Preguntar al LLM si es artículo real
@@ -193,6 +213,8 @@ def main() -> None:
                     error_count += 1
                     if not args.dry_run:
                         write_cursor(cursor_path, i + 1)
+                    pbar.update(1)
+                    pbar.set_postfix(keep=kept, drop=discarded, err=error_count)
                     continue
 
                 category = info.get("category", "unknown")
@@ -217,15 +239,13 @@ def main() -> None:
                 if not args.dry_run:
                     write_cursor(cursor_path, i + 1)
 
-                if (kept + discarded) % 25 == 0:
-                    logger.info(
-                        "  Procesados: %d/%d | Conservados: %d | Descartados: %d",
-                        kept + discarded, pending, kept, discarded,
-                    )
+                pbar.update(1)
+                pbar.set_postfix(keep=kept, drop=discarded, err=error_count)
 
                 # Rate limit
                 time.sleep(args.rate_limit)
     finally:
+        pbar.close()
         if fout:
             fout.close()
 

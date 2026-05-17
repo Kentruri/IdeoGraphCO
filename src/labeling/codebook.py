@@ -1,11 +1,29 @@
 """Codebook político — define los 8 ejes ideológicos y sus criterios de evaluación.
 
 Este codebook se inyecta como system prompt al LLM-as-a-Judge para que
-califique cada noticia de 0 a 100 en cada eje de forma consistente.
+califique cada noticia con un entero de 1 a 5 en cada eje, alineado con
+la bitácora de anotación humana (PDF) para garantizar consistencia entre
+labels silver (LLM) y gold (humano).
 
-Las secciones marcadas con [TBD] requieren definición por parte del
-investigador basándose en su conocimiento de ciencia política colombiana.
+Mapeo a 0-1 (para el modelo) lo hace src.labeling.judge.normalize_labels:
+    1 (Ausente)   → 0.00
+    2 (Leve)      → 0.25
+    3 (Moderado)  → 0.50
+    4 (Marcado)   → 0.75
+    5 (Dominante) → 1.00
 """
+
+# ---------------------------------------------------------------------------
+# Nombres semánticos de los 5 niveles (alineados con la bitácora PDF)
+# ---------------------------------------------------------------------------
+
+SCALE_LEVELS: dict[str, str] = {
+    "1": "Ausente",
+    "2": "Leve",
+    "3": "Moderado",
+    "4": "Marcado",
+    "5": "Dominante",
+}
 
 # ---------------------------------------------------------------------------
 # Definiciones operacionales de los 8 ejes
@@ -332,7 +350,7 @@ CALIBRATION_RULES: list[str] = [
     "Primero determina si la noticia es de carácter político, de políticas públicas o "
     "impacto estatal (is_political=1). Si NO es política (ej. deportes, farándula, "
     "crónica roja sin implicaciones institucionales), asigna is_political=0 y todos "
-    "los ejes estrictamente en 0.",
+    "los ejes en 1 (Ausente).",
     # 5. Medición de intensidad, no de postura
     "Los scores miden la INTENSIDAD RETÓRICA del marcador en el texto, no si el "
     "artículo está a favor o en contra de dicha postura. Si un texto critica "
@@ -372,9 +390,10 @@ def build_system_prompt(include_examples: bool = False) -> str:
             if not marker.startswith("[TBD"):
                 axes_section += f"- {marker}\n"
 
-        axes_section += "\n**Escala de calibración:**\n"
+        axes_section += "\n**Escala de calibración (entero 1-5):**\n"
         for range_key, description in axis["scale"].items():
-            axes_section += f"- **{range_key}:** {description}\n"
+            level_name = SCALE_LEVELS.get(range_key, "")
+            axes_section += f"- **{range_key} — {level_name}:** {description}\n"
 
         if include_examples and not axis["examples_high"].startswith("[TBD"):
             axes_section += f"\n**Ejemplo score alto:**\n> {axis['examples_high']}\n"
@@ -390,7 +409,7 @@ evaluar noticias colombianas y asignar un puntaje de intensidad ideológica en 8
 
 Para cada noticia, devuelve un JSON con:
 - "is_political": 1 si es política, 0 si no
-- 8 campos numéricos (0-100), uno por cada eje ideológico
+- 8 campos enteros con valores de 1 a 5 (1=Ausente, 2=Leve, 3=Moderado, 4=Marcado, 5=Dominante)
 
 ## EJES IDEOLÓGICOS
 {axes_section}
@@ -400,16 +419,14 @@ Para cada noticia, devuelve un JSON con:
 
 ## FORMATO DE RESPUESTA (solo JSON, nada más)
 
-```json
 {{{{
     "is_political": 1,
-    "personalismo": 0,
-    "institucionalismo": 0,
-    "populismo": 0,
-    "doctrinarismo": 0,
-    "soberanismo": 0,
-    "globalismo": 0,
-    "conservadurismo": 0,
-    "progresismo": 0
-}}}}
-```"""
+    "personalismo": 4,
+    "institucionalismo": 2,
+    "populismo": 3,
+    "doctrinarismo": 1,
+    "soberanismo": 1,
+    "globalismo": 1,
+    "conservadurismo": 2,
+    "progresismo": 2
+}}}}"""

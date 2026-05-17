@@ -27,6 +27,7 @@ from src.data.scraping.db import (
     mark_as_scraped,
 )
 from src.data.scraping.robots import is_url_allowed
+from src.utils.ids import article_id
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,7 @@ def extract_article(url: str, source: str, category: str) -> dict | None:
         date = metadata.date if metadata and metadata.date else None
 
         return {
+            "id": article_id(url),
             "text": text,
             "title": title,
             "authors": authors,

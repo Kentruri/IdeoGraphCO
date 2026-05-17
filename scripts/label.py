@@ -40,14 +40,20 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=str,
-        default="gemini-2.0-flash",
-        help="Modelo de Gemini (default: gemini-2.0-flash)",
+        default="gemini-2.5-flash",
+        help="Modelo de Gemini (default: gemini-2.5-flash)",
     )
     parser.add_argument(
         "--input",
         type=str,
         default=None,
         help="Archivo de entrada (default: data/raw/news_clean.jsonl)",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Archivo de salida (default: data/interim/labeled_news.jsonl)",
     )
     args = parser.parse_args()
 
@@ -71,6 +77,7 @@ def main() -> None:
 
     client = genai.Client(api_key=api_key)
     input_path = Path(args.input) if args.input else None
+    output_path = Path(args.output) if args.output else None
 
     print()
     print("=" * 60)
@@ -84,6 +91,7 @@ def main() -> None:
     output = label_news_file(
         llm_client=client,
         input_path=input_path,
+        output_path=output_path,
         llm_model=args.model,
         force=args.force,
         max_articles=args.max_articles,
