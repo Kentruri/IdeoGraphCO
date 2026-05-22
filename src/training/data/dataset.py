@@ -30,8 +30,8 @@ class IdeoGraphDataset(Dataset):
 
     Formato esperado del JSONL:
         {
+            "id": "abc123...",
             "text": "El presidente anunció...",
-            "is_political": 1,
             "personalismo": 0.72,
             "institucionalismo": 0.15,
             ...
@@ -185,7 +185,6 @@ class IdeoGraphDataset(Dataset):
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "is_political": torch.tensor(article["is_political"], dtype=torch.long),
             "labels": labels,
             "article_idx": torch.tensor(chunk["article_idx"], dtype=torch.long),
         }

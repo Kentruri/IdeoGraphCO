@@ -48,7 +48,6 @@ def main() -> None:
 
     # Recolectar scores por eje
     scores: dict[str, list[float]] = {a: [] for a in AXES}
-    n_political = 0
     n_total = 0
     with open(input_path, encoding="utf-8") as f:
         for line in f:
@@ -57,9 +56,6 @@ def main() -> None:
                 continue
             sample = json.loads(line)
             n_total += 1
-            if sample.get("is_political") != 1:
-                continue
-            n_political += 1
             nested = sample.get("labels", {})
             for axis in AXES:
                 v = float(sample.get(axis, nested.get(axis, 0.0)))
@@ -69,7 +65,7 @@ def main() -> None:
     print("=" * 70)
     print("  DISTRIBUCIÓN DE SCORES POR EJE")
     print(f"  Fuente: {input_path}")
-    print(f"  Total artículos: {n_total} (políticos: {n_political})")
+    print(f"  Total artículos: {n_total}")
     print("=" * 70)
     print()
 

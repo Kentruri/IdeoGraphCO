@@ -27,13 +27,13 @@ AXES: list[str] = [
 
 
 def load_labeled_articles(path: Path) -> list[dict]:
-    """Carga el archivo JSONL de artículos etiquetados (solo políticos)."""
+    """Carga el archivo JSONL de artículos etiquetados (todos políticos)."""
     articles = []
     with open(path, encoding="utf-8") as f:
         for line in f:
-            data = json.loads(line)
-            if data.get("is_political") == 1:
-                articles.append(data)
+            line = line.strip()
+            if line:
+                articles.append(json.loads(line))
     return articles
 
 

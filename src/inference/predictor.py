@@ -37,10 +37,11 @@ class IdeoVectPredictor:
     def predict(self, text: str) -> dict:
         """Predice los scores ideológicos de un texto.
 
+        El modelo asume que el texto es político (responsabilidad del caller
+        validar eso aguas arriba si es necesario).
+
         Returns:
             {
-                "is_political": True,
-                "politicity_confidence": 0.93,
                 "axes": {
                     "personalismo": 72.1,
                     "institucionalismo": 15.3,
@@ -59,12 +60,7 @@ class IdeoVectPredictor:
         input_ids = encoding["input_ids"].to(self.device)
         attention_mask = encoding["attention_mask"].to(self.device)
 
-        politicity_logits, axis_scores = self.model(input_ids, attention_mask)
-
-        # Politicidad
-        probs = torch.softmax(politicity_logits, dim=-1).squeeze(0)
-        is_political = bool(probs[1] > probs[0])
-        politicity_confidence = round(probs[1].item(), 4)
+        axis_scores = self.model(input_ids, attention_mask)
 
         # Scores de ejes (escalar de [0,1] a [0,100])
         scores = axis_scores.squeeze(0).cpu().tolist()
@@ -73,11 +69,7 @@ class IdeoVectPredictor:
             for name, score in zip(AXIS_NAMES, scores)
         }
 
-        return {
-            "is_political": is_political,
-            "politicity_confidence": politicity_confidence,
-            "axes": axes,
-        }
+        return {"axes": axes}
 
     def predict_batch(self, texts: list[str]) -> list[dict]:
         """Predice scores para múltiples textos."""

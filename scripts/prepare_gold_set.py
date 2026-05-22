@@ -9,8 +9,8 @@ exporta:
 
 El Excel incluye:
 - Hoja "Instrucciones": resumen del codebook y escala 1-5
-- Hoja "Articulos": 1 fila por artículo, columnas para is_political + 8 ejes
-- Validación de datos: is_political ∈ {0,1}, ejes ∈ {1,2,3,4,5}
+- Hoja "Articulos": 1 fila por artículo, 8 columnas para los ejes
+- Validación de datos: ejes ∈ {1,2,3,4,5}
 
 Uso:
     python scripts/prepare_gold_set.py
@@ -85,8 +85,8 @@ def build_excel(samples: list[dict], output_path: Path) -> None:
     ws_help["A3"].font = bold
     ws_help["A4"] = (
         "Lee cada artículo y califica con un entero del 1 al 5 cada uno de "
-        "los 8 ejes ideológicos. Si NO es político, marca is_political=0 y "
-        "los 8 ejes en 1 (Ausente)."
+        "los 8 ejes ideológicos. Todos los artículos del gold set ya pasaron "
+        "el filtro de politicidad aguas arriba — asume que son políticos."
     )
     ws_help["A4"].alignment = Alignment(wrap_text=True, vertical="top")
     ws_help.row_dimensions[4].height = 60
@@ -137,7 +137,7 @@ def build_excel(samples: list[dict], output_path: Path) -> None:
 
     # Headers
     headers = (
-        ["id", "source", "category", "url", "title", "text", "is_political"]
+        ["id", "source", "category", "url", "title", "text"]
         + AXES
         + ["notes"]
     )
@@ -156,7 +156,6 @@ def build_excel(samples: list[dict], output_path: Path) -> None:
             a.get("url", ""),
             a.get("title", ""),
             a.get("text", ""),
-            None,  # is_political (anotador llena)
             *[None] * len(AXES),  # ejes (anotador llena)
             None,  # notes
         ])
@@ -169,41 +168,34 @@ def build_excel(samples: list[dict], output_path: Path) -> None:
         "D": 40,  # url
         "E": 40,  # title
         "F": 80,  # text
-        "G": 12,  # is_political
     }
     for col, w in widths.items():
         ws.column_dimensions[col].width = w
-    # Ejes (H..O) y notes (P)
-    for col_idx in range(8, 8 + len(AXES)):
+    # Ejes (G..N) y notes (O)
+    for col_idx in range(7, 7 + len(AXES)):
         ws.column_dimensions[get_column_letter(col_idx)].width = 16
-    ws.column_dimensions[get_column_letter(8 + len(AXES))].width = 30
+    ws.column_dimensions[get_column_letter(7 + len(AXES))].width = 30
 
-    # Wrap text en text, title, notes
+    # Wrap text en title, text, notes
+    notes_col = get_column_letter(7 + len(AXES))
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
         for cell in row:
-            if cell.column_letter in ("E", "F", "P"):
+            if cell.column_letter in ("E", "F", notes_col):
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
             else:
                 cell.alignment = Alignment(vertical="top", horizontal="center")
 
-    # Freeze: primera fila + columnas hasta text
+    # Freeze: primera fila + columnas hasta text (F)
     ws.freeze_panes = "G2"
 
-    # Data validation: is_political ∈ {0,1}, ejes ∈ {1..5}
-    dv_pol = DataValidation(
-        type="list", formula1='"0,1"', allow_blank=True,
-        showErrorMessage=True, errorTitle="Valor inválido", error="Solo 0 o 1.",
-    )
-    dv_pol.add(f"G2:G{ws.max_row}")
-    ws.add_data_validation(dv_pol)
-
+    # Data validation para los 8 ejes: enteros 1-5
     dv_axes = DataValidation(
         type="list", formula1='"1,2,3,4,5"', allow_blank=True,
         showErrorMessage=True, errorTitle="Valor inválido",
         error="Solo entero 1, 2, 3, 4 o 5.",
     )
-    first_axis_col = get_column_letter(8)
-    last_axis_col = get_column_letter(8 + len(AXES) - 1)
+    first_axis_col = get_column_letter(7)
+    last_axis_col = get_column_letter(7 + len(AXES) - 1)
     dv_axes.add(f"{first_axis_col}2:{last_axis_col}{ws.max_row}")
     ws.add_data_validation(dv_axes)
 

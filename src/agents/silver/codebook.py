@@ -346,24 +346,19 @@ CALIBRATION_RULES: list[str] = [
     "NO son mutuamente excluyentes. Un texto puede tener scores altos en ambos si "
     "expone con fuerza ambas posturas (por ejemplo, un debate donde chocan dos "
     "visiones, o un decreto justificado con retórica caudillista).",
-    # 4. Filtro de politicidad
-    "Primero determina si la noticia es de carácter político, de políticas públicas o "
-    "impacto estatal (is_political=1). Si NO es política (ej. deportes, farándula, "
-    "crónica roja sin implicaciones institucionales), asigna is_political=0 y todos "
-    "los ejes en 1 (Ausente).",
-    # 5. Medición de intensidad, no de postura
+    # 4. Medición de intensidad, no de postura
     "Los scores miden la INTENSIDAD RETÓRICA del marcador en el texto, no si el "
     "artículo está a favor o en contra de dicha postura. Si un texto critica "
     "fuertemente el populismo describiendo sus tácticas, el texto contiene lenguaje "
     "populista y debe puntuar en ese eje.",
-    # 6. Regla del contexto transversal colombiano
+    # 5. Regla del contexto transversal colombiano
     "Ten en cuenta el CONTEXTO COLOMBIANO: Temas como el conflicto armado, el proceso "
     "de paz, la política antidrogas o la restitución de tierras son transversales. Un "
     "solo artículo sobre estos temas puede activar simultáneamente progresismo "
     "(justicia transicional), institucionalismo (fallos de la JEP o cortes), "
     "conservadurismo (exigencia de seguridad y mano dura) y soberanismo (control "
     "territorial). Evalúa la presencia de cada retórica por separado.",
-    # 7. Restricción de formato
+    # 6. Restricción de formato
     "Responde SOLO con un objeto JSON válido, sin usar bloques de código Markdown "
     "(```json ... ```), sin explicaciones, sin preámbulos y sin comentarios adicionales.",
 ]
@@ -405,11 +400,12 @@ def build_system_prompt(include_examples: bool = False) -> str:
             rules_section += f"{i}. {rule}\n"
 
     return f"""Eres un analista político experto en el contexto colombiano. Tu tarea es
-evaluar noticias colombianas y asignar un puntaje de intensidad ideológica en 8 dimensiones.
+evaluar una noticia colombiana POLÍTICA y asignar un puntaje de intensidad
+ideológica en 8 dimensiones. Las noticias no-políticas ya fueron descartadas
+aguas arriba por el filter LLM, así que asume que el texto SIEMPRE es político.
 
-Para cada noticia, devuelve un JSON con:
-- "is_political": 1 si es política, 0 si no
-- 8 campos enteros con valores de 1 a 5 (1=Ausente, 2=Leve, 3=Moderado, 4=Marcado, 5=Dominante)
+Devuelve un JSON con 8 campos enteros (uno por eje), valores 1-5:
+1=Ausente, 2=Leve, 3=Moderado, 4=Marcado, 5=Dominante.
 
 ## EJES IDEOLÓGICOS
 {axes_section}
@@ -420,7 +416,6 @@ Para cada noticia, devuelve un JSON con:
 ## FORMATO DE RESPUESTA (solo JSON, nada más)
 
 {{{{
-    "is_political": 1,
     "personalismo": 4,
     "institucionalismo": 2,
     "populismo": 3,

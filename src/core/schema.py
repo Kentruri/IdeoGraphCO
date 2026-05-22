@@ -23,8 +23,10 @@ ARTICLE_FIELDS: tuple[str, ...] = (
     "url", "date", "scraped_at",
 )
 
-# Campos canónicos del JSONL etiquetado (artículo + labels)
+# Campos canónicos del JSONL etiquetado (artículo + labels).
+# El dataset es 100% político por construcción (filtrado aguas arriba),
+# por eso no hay campo is_political.
 LABELED_FIELDS: tuple[str, ...] = (
     "id", "text", "title", "source", "category", "url", "date",
-    "is_political", *AXIS_NAMES,
+    *AXIS_NAMES,
 )

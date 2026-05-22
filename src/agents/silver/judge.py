@@ -46,8 +46,7 @@ def parse_response(response_text: str) -> dict | None:
 
     Acepta tanto JSON crudo como envuelto en ```json ... ```.
     Cada eje debe ser un entero (o float redondeable) en [1, 5].
-    Si is_political=0, fuerza todos los ejes a 1 (Ausente) en consistencia
-    con la regla 4 del codebook.
+    Asume que la noticia es política (filter LLM la dejó pasar aguas arriba).
     """
     text = response_text.strip()
 
@@ -65,10 +64,6 @@ def parse_response(response_text: str) -> dict | None:
         )
         return None
 
-    if "is_political" not in data:
-        return None
-    is_political = int(data["is_political"])
-
     for axis in AXIS_NAMES:
         if axis not in data:
             return None
@@ -77,12 +72,6 @@ def parse_response(response_text: str) -> dict | None:
         # Redondear y acotar a la escala 1-5 (tolera floats por seguridad).
         data[axis] = max(1, min(5, int(round(data[axis]))))
 
-    # Consistencia con regla 4: no-políticos → todos los ejes en 1 (Ausente).
-    if is_political == 0:
-        for axis in AXIS_NAMES:
-            data[axis] = 1
-
-    data["is_political"] = is_political
     return data
 
 
@@ -99,10 +88,7 @@ def normalize_labels(data: dict) -> dict:
     4 (Marcado)   → 0.75
     5 (Dominante) → 1.00
     """
-    return {
-        "is_political": int(data["is_political"]),
-        **{axis: _SCALE_TO_UNIT[int(data[axis])] for axis in AXIS_NAMES},
-    }
+    return {axis: _SCALE_TO_UNIT[int(data[axis])] for axis in AXIS_NAMES}
 
 
 def _call_gemini_with_retry(
@@ -276,7 +262,6 @@ def label_news_file(
                     "category": raw.get("category", ""),
                     "url": raw.get("url", ""),
                     "date": raw.get("date"),
-                    "is_political": normalized["is_political"],
                     **{axis: normalized[axis] for axis in AXIS_NAMES},
                 }
 

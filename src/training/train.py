@@ -93,7 +93,6 @@ def train(cfg: DictConfig) -> None:
         lr=cfg.model.learning_rate,
         weight_decay=cfg.model.weight_decay,
         freeze_encoder_epochs=cfg.model.freeze_encoder_epochs,
-        use_politicity_head=cfg.model.get("use_politicity_head", False),
         warmup_ratio=cfg.model.get("warmup_ratio", 0.1),
     )
 
