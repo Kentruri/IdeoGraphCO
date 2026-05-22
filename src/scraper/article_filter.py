@@ -1,13 +1,10 @@
-"""LLM filter — decide si un texto es un artículo POLÍTICO bien formado.
+"""LLM filter — clasifica un texto en 4 categorías editoriales.
 
-Usa Gemini para clasificar cada texto en 6 categorías:
-- "political_article": artículo de política / impacto estatal (CONSERVAR)
-- "nonpolitical_article": artículo bien formado pero NO político (deportes,
-  farándula, crónica roja sin implicación política, pieza de servicio)
-- "garbage": menú, lista de URLs, sitemap, glosario, formulario
-- "biography": biografía o página "acerca de"
-- "static_page": página institucional sin valor noticioso
-- "other": cualquier otro contenido no editorial
+Usa Gemini para clasificar:
+- "political_article": artículo político con impacto institucional (CONSERVAR)
+- "nonpolitical_article": artículo bien formado pero sin dimensión política
+- "biography_static": perfiles de personas o páginas institucionales estáticas
+- "garbage": menús, listas de enlaces, fragmentos sin coherencia
 
 Solo se conservan los textos clasificados como "political_article".
 """
@@ -21,28 +18,49 @@ from src.scraper.prompts import FILTER_SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 
+# Categorías válidas (deben coincidir con FILTER_SYSTEM_PROMPT).
+FILTER_CATEGORIES: list[str] = [
+    "political_article",
+    "nonpolitical_article",
+    "biography_static",
+    "garbage",
+]
+
+
+# Schema JSON estructurado para Gemini. Cuando se pasa como response_schema,
+# el modelo garantiza la presencia de todos los campos y tipos correctos.
+# Esto elimina la mayoría de errores de parseo y la necesidad de remover
+# wrappers de markdown.
+_FILTER_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "category": {"type": "string", "enum": FILTER_CATEGORIES},
+        "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+        },
+        "reason": {"type": "string"},
+    },
+    "required": ["category", "confidence", "reason"],
+}
+
+
 def parse_filter_response(response_text: str) -> dict | None:
-    """Extrae el JSON de la respuesta del LLM."""
-    text = response_text.strip()
+    """Parsea la respuesta del LLM como JSON.
 
-    if "```json" in text:
-        text = text.split("```json")[1].split("```")[0].strip()
-    elif "```" in text:
-        text = text.split("```")[1].split("```")[0].strip()
-
+    Con `response_schema` configurado en `call_filter_with_retry`, Gemini
+    garantiza un JSON válido con la estructura esperada. Mantenemos try/except
+    como red de seguridad por si algo sale mal (paranoia productiva).
+    """
     try:
-        data = json.loads(text)
+        return json.loads(response_text)
     except json.JSONDecodeError as e:
         logger.warning(
             "No se pudo parsear filter response (%s). Texto: %s",
-            e, text[:400],
+            e, response_text[:400],
         )
         return None
-
-    if "is_political_article" not in data or "category" not in data:
-        return None
-
-    return data
 
 
 def call_filter_with_retry(
@@ -54,7 +72,8 @@ def call_filter_with_retry(
     """Llama al LLM filter con retry y backoff exponencial.
 
     Configuración para modelos 2.5 (reasoning):
-    - response_mime_type=application/json → JSON garantizado
+    - response_mime_type=application/json → JSON sin wrappers de markdown
+    - response_schema=_FILTER_RESPONSE_SCHEMA → estructura garantizada
     - thinking_budget=0 → desactiva CoT interno (no necesario para esta tarea)
     """
     for attempt in range(max_retries):
@@ -65,6 +84,7 @@ def call_filter_with_retry(
                 config={
                     "system_instruction": FILTER_SYSTEM_PROMPT,
                     "response_mime_type": "application/json",
+                    "response_schema": _FILTER_RESPONSE_SCHEMA,
                     "thinking_config": {"thinking_budget": 0},
                     "max_output_tokens": 512,
                     "temperature": 0.0,
@@ -90,7 +110,7 @@ def is_real_article(
     client,
     text: str,
     model: str = "gemini-2.5-flash-lite",
-    max_chars: int = 1500,
+    max_chars: int = 3000,
 ) -> tuple[bool, dict | None]:
     """Pregunta al LLM si el texto es un artículo POLÍTICO real.
 
@@ -98,13 +118,15 @@ def is_real_article(
         client: Cliente de Google GenAI.
         text: Texto del artículo.
         model: Modelo de Gemini a usar.
-        max_chars: Caracteres iniciales del texto a enviar al LLM
-            (suficiente para clasificar sin gastar tokens innecesarios).
+        max_chars: Caracteres iniciales del texto a enviar al LLM. 3000 ≈ 500
+            palabras: cubre intro periodística + cuerpo (los artículos
+            colombianos de fondo a veces tienen anécdota larga antes del meollo
+            político). Con flash-lite el costo extra vs 1500 es despreciable.
 
     Returns:
         Tupla (es_político_artículo, info) donde info es el JSON parseado
-        con campos is_political_article, category, reason. Solo retorna
-        True si el texto es categoría "political_article".
+        con campos category, confidence, reason. Solo retorna True si la
+        categoría es "political_article".
     """
     truncated = text[:max_chars]
     response = call_filter_with_retry(client, model, truncated)
@@ -115,4 +137,5 @@ def is_real_article(
     if data is None:
         return False, None
 
-    return bool(data["is_political_article"]), data
+    is_political = data.get("category") == "political_article"
+    return is_political, data

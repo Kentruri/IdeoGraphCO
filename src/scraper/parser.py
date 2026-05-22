@@ -20,6 +20,7 @@ from trafilatura.sitemaps import sitemap_search
 from tqdm import tqdm
 
 from src.scraper.cleaner import clean_article_text
+from src.scraper.config import get_random_user_agent
 from src.scraper.db import (
     compute_content_hash,
     is_already_scraped,
@@ -36,16 +37,20 @@ logger = logging.getLogger(__name__)
 for noisy in ("courlan", "trafilatura", "htmldate", "trafilatura.metadata", "trafilatura.htmlprocessing"):
     logging.getLogger(noisy).setLevel(logging.ERROR)
 
-# Config de trafilatura con timeout para no quedar colgado en sitios lentos
+# Config de trafilatura con timeout para no quedar colgado en sitios lentos.
+# El USER_AGENTS se rota en cada request vía `_set_random_user_agent()` antes
+# de cada fetch_url — la config sigue siendo global porque el pipeline es
+# secuencial; si en el futuro paralelizamos hay que pasar a configs por hilo.
 from trafilatura.settings import use_config
 
 _TRAFILATURA_CONFIG = use_config()
 _TRAFILATURA_CONFIG.set("DEFAULT", "DOWNLOAD_TIMEOUT", "15")
 _TRAFILATURA_CONFIG.set("DEFAULT", "EXTRACTION_TIMEOUT", "20")
-_TRAFILATURA_CONFIG.set("DEFAULT", "USER_AGENTS", (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-))
+
+
+def _set_random_user_agent() -> None:
+    """Rota el User-Agent del config global. Llamar antes de cada fetch_url."""
+    _TRAFILATURA_CONFIG.set("DEFAULT", "USER_AGENTS", get_random_user_agent())
 
 # ---------------------------------------------------------------------------
 # Rate limiting con backoff exponencial
@@ -72,8 +77,15 @@ def _adaptive_sleep(consecutive_errors: int) -> None:
 
 
 def extract_article(url: str, source: str, category: str) -> dict | None:
-    """Descarga y extrae un artículo con Trafilatura."""
+    """Descarga y extrae un artículo con Trafilatura.
+
+    Cada llamada rota el User-Agent (lista en src/scraper/config.py) para
+    minimizar el riesgo de baneo por patrón uniforme.
+    """
     try:
+        # Rotar UA antes de cada request
+        _set_random_user_agent()
+
         # Timeout explícito de 15s para no quedar colgado en sitios lentos
         downloaded = trafilatura.fetch_url(url, config=_TRAFILATURA_CONFIG)
         if downloaded is None:
@@ -97,7 +109,7 @@ def extract_article(url: str, source: str, category: str) -> dict | None:
         authors = []
         if metadata and metadata.author:
             authors = [a.strip() for a in metadata.author.split(";") if a.strip()]
-        text = clean_article_text(text, authors=authors)
+        text = clean_article_text(text, source_name=source, authors=authors)
 
         if len(text) < 400:
             return None
@@ -125,8 +137,19 @@ def extract_article(url: str, source: str, category: str) -> dict | None:
             "date": date,
             "scraped_at": scraped_at,
         }
-    except Exception:
-        logger.warning("Error extrayendo %s", url)
+    except TimeoutError as e:
+        # Servidor lento o cuelga. No bloquear el resto del scrape.
+        logger.warning("Timeout extrayendo %s: %s", url, e)
+        return None
+    except (ConnectionError, OSError) as e:
+        # Errores de red (DNS, conexión rechazada, etc.).
+        logger.warning("Error de red en %s: %s", url, e)
+        return None
+    except Exception as e:
+        # Cualquier otro error (parsing, encoding, atributos inesperados de
+        # trafilatura). Loggeamos el tipo para poder diagnosticar después.
+        logger.warning("Error inesperado extrayendo %s (%s): %s",
+                       url, type(e).__name__, str(e)[:120])
         return None
 
 

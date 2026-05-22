@@ -15,6 +15,7 @@ Uso:
 import argparse
 import logging
 import os
+from pathlib import Path
 
 try:
     from dotenv import load_dotenv
@@ -22,7 +23,7 @@ try:
 except ImportError:
     pass
 
-from src.core.paths import RAW_DIR
+from src.core.paths import LOGS_DIR, RAW_DIR
 from src.scraper.db import get_scraped_count
 from src.scraper.pipeline import scrape_pipeline
 from src.scraper.sources import CATEGORIES, SOURCES, SOURCES_BY_CATEGORY
@@ -88,13 +89,40 @@ def main() -> None:
         "--rate-limit", type=float, default=4.5,
         help="Segundos entre llamadas al filter LLM (default: 4.5)",
     )
+    parser.add_argument(
+        "--log-level", default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Verbosidad de logs en stdout (default: INFO)",
+    )
+    parser.add_argument(
+        "--filter-log", type=str, default=None,
+        help="JSONL con cada decisión del filter LLM "
+             "(default: logs/filter_decisions.jsonl). "
+             "Útil para analizar distribución de confidence y calibrar.",
+    )
+    parser.add_argument(
+        "--no-filter-log", action="store_true",
+        help="Desactiva el log estructurado de decisiones del filter.",
+    )
     args = parser.parse_args()
+
+    # Configurar nivel de logs según --log-level
+    logging.getLogger().setLevel(getattr(logging, args.log_level))
 
     output_path = (
         RAW_DIR / (args.output or "articles.jsonl")
         if args.output is None or "/" not in args.output
         else args.output
     )
+
+    # Filter log estructurado (JSONL con keep/drop + confidence + reason)
+    if args.no_filter_log:
+        filter_log_path: Path | None = None
+    else:
+        filter_log_path = (
+            Path(args.filter_log) if args.filter_log
+            else LOGS_DIR / "filter_decisions.jsonl"
+        )
 
     use_llm_filter = not args.no_filter
     llm_client = None
@@ -135,6 +163,7 @@ def main() -> None:
         llm_model=args.model,
         min_chars=args.min_chars,
         rate_limit_filter=args.rate_limit,
+        filter_log_path=filter_log_path,
     )
 
 

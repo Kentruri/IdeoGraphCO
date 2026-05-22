@@ -8,6 +8,7 @@ NO convierte a minúsculas (el modelo ConfliBERT es Cased).
 """
 
 import re
+import unicodedata
 
 # ---------------------------------------------------------------------------
 # Patrones de "frases parásito" (CTAs, referencias cruzadas)
@@ -162,11 +163,70 @@ _ARTICLE_START_MARKER = re.compile(
 )
 
 # ---------------------------------------------------------------------------
+# Líneas cortas típicas de UI residual del scraping
+# ---------------------------------------------------------------------------
+# Patrones CONSERVADORES: solo matchean líneas que son CLARAMENTE UI, no
+# contenido. Un filtro genérico por longitud sería peligroso (podría borrar
+# titulares cortos o citas).
+
+_UI_SHORT_LINES = re.compile(
+    r"^\s*(?:"
+    r"Compartir|Guardar|Comentar|Imprimir|"
+    r"Reportar\s+(?:un\s+)?error|"
+    r"Suscríbete|Suscribirse|Recibir\s+alertas|"
+    r"\d+\s*min(?:utos)?\s+de\s+lectura|"
+    r"Foto[\s:]+[^\n]{0,80}|"           # "Foto: AFP" — pie corto, sin pie largo de fotonota
+    r"Cr[eé]ditos?[\s:]+[^\n]{0,80}|"
+    r"AFP|EFE|Reuters|Colprensa"        # créditos de agencia sueltos
+    r")\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# ---------------------------------------------------------------------------
+# URLs residuales (trafilatura normalmente las quita, pero a veces quedan)
+# ---------------------------------------------------------------------------
+_URL_PATTERN = re.compile(r"https?://\S+|www\.\S+")
+
+# ---------------------------------------------------------------------------
+# Handles de redes sociales al FINAL del texto
+# ---------------------------------------------------------------------------
+# Inline (@petrogustavo respondió...) puede ser contenido relevante.
+# Solo eliminamos handles que están sueltos al final, típicos de bylines.
+_HANDLE_TAIL_PATTERN = re.compile(
+    r"\n\s*@[\w_]+\s*$",
+    re.MULTILINE,
+)
+
+# ---------------------------------------------------------------------------
 # Limpieza de espacios en blanco excesivos
 # ---------------------------------------------------------------------------
 
 _MULTI_NEWLINES = re.compile(r"\n{3,}")
 _TRAILING_SPACES = re.compile(r"[ \t]+$", re.MULTILINE)
+
+
+def _safe_section_cutoff(text: str, pattern: re.Pattern, min_position: float = 0.5) -> str:
+    """Aplica un cutoff solo si el match ocurre después de `min_position` del texto.
+
+    El _SECTION_CUTOFF_PATTERN original usa `.*$` con DOTALL: si la frase de corte
+    aparece por accidente en la primera mitad del artículo, borra todo el cuerpo
+    útil. Esta función mitiga ese riesgo: si el match está antes del 50% del texto,
+    se considera falso positivo y se ignora.
+    """
+    match = pattern.search(text)
+    if match and match.start() > len(text) * min_position:
+        return text[:match.start()]
+    return text
+
+
+def _dynamic_brand_footer(source_name: str) -> re.Pattern:
+    """Footer dinámico para una fuente específica (en mayúsculas, al final).
+
+    Permite limpiar marcas que no están en `_BRAND_FOOTER_PATTERN`, sin tener
+    que editar la lista cada vez que añadimos un medio nuevo.
+    """
+    escaped = re.escape(source_name.upper())
+    return re.compile(rf"\n\s*{escaped}\s*$", re.MULTILINE)
 
 
 def _remove_author_lines(text: str, authors: list[str]) -> str:
@@ -184,56 +244,79 @@ def _remove_author_lines(text: str, authors: list[str]) -> str:
     return "\n".join(cleaned)
 
 
-def clean_article_text(text: str, authors: list[str] | None = None) -> str:
+def clean_article_text(
+    text: str,
+    *,
+    source_name: str | None = None,
+    authors: list[str] | None = None,
+) -> str:
     """Limpia el texto de un artículo scrapeado.
 
+    Args:
+        text: texto del artículo (puede contener basura post-trafilatura).
+        source_name: nombre del medio (ej. "lasillavacia"); si se da, se genera
+            un footer dinámico para esa marca además de los hardcoded.
+        authors: lista de autores; sus nombres sueltos en una línea se eliminan.
+
     Aplica en orden:
-    0. Marcador de inicio: si hay "Noticia\n"/"Análisis\n", descartar todo lo previo
-    1. Cookie banners completos
-    2. Restos de cookie banners
-    3. Restos de UI legal (líneas con "aquí", "Aceptar", etc.)
-    4. Paywalls y prompts de suscripción
-    5. UI de chatbot y errores
-    6. Bloques CTA ("LEA TAMBIÉN\n\ntítulo", "Lea:", "Ver más:")
-    7. Frases CTA inline
-    8. CTAs de WhatsApp/redes sociales
-    9. Firmas de periodista al final
-    10. Emails al final
-    11. Footers de marca
-    12. Listings de noticias relacionadas (corte de sección)
-    13. Líneas con solo el nombre del autor
-    14. Normalización de espacios
+    0. Normalización Unicode (NFKC) — convierte \\xa0 → espacio normal, etc.
+    1. Marcador de inicio: si hay "Noticia\\n"/"Análisis\\n", descartar todo lo previo
+    2. Cookie banners (completo + restos + restos de UI legal)
+    3. Paywalls y UI de chatbot
+    4. Bloques CTA + frases inline + redes sociales
+    5. URLs residuales
+    6. UI shorts (Compartir, Foto:, etc.)
+    7. Firmas, emails, handles y footers al final
+    8. Footer dinámico de la fuente (si source_name)
+    9. Section cutoff seguro (solo si el match está en la mitad final)
+    10. Líneas con solo el nombre del autor
+    11. Normalización de espacios
     """
-    # 0. Marcador de inicio
+    # 0. Normalización Unicode: \xa0 → " ", caracteres compatibility, etc.
+    text = unicodedata.normalize("NFKC", text)
+
+    # 1. Marcador de inicio
     text = _ARTICLE_START_MARKER.sub("", text, count=1)
 
-    # 1-3. Cookie banners
+    # 2. Cookie banners
     text = _COOKIE_BANNER_PATTERN.sub("", text)
     text = _COOKIE_BANNER_REMNANT_PATTERN.sub("\n", text)
     text = _UI_REMNANT_PATTERN.sub("", text)
 
-    # 4-5. Paywall y UI de chatbot
+    # 3. Paywall y UI de chatbot
     text = _PAYWALL_PATTERN.sub("", text)
     text = _UI_NOISE_PATTERN.sub("", text)
 
-    # 6-8. CTAs
+    # 4. CTAs (bloques + inline + redes)
     text = _CTA_BLOCK_PATTERN.sub("", text)
     text = _CTA_INLINE_PATTERN.sub("", text)
     text = _SOCIAL_CTA_PATTERN.sub("", text)
 
-    # 9-11. Firmas y footers al final
+    # 5. URLs residuales (trafilatura normalmente las quita pero a veces no)
+    text = _URL_PATTERN.sub("", text)
+
+    # 6. UI shorts (Compartir, Foto: pie corto, créditos de agencia)
+    text = _UI_SHORT_LINES.sub("", text)
+
+    # 7. Firmas, emails, handles, footers al final
     text = _SIGNATURE_PATTERN.sub("", text)
     text = _EMAIL_TAIL_PATTERN.sub("", text)
+    text = _HANDLE_TAIL_PATTERN.sub("", text)
     text = _BRAND_FOOTER_PATTERN.sub("", text)
 
-    # 12. Cortar desde "Más para ver", "BOLETINES EL TIEMPO", etc.
-    text = _SECTION_CUTOFF_PATTERN.sub("", text)
+    # 8. Footer dinámico por fuente (si tenemos el nombre)
+    if source_name:
+        text = _dynamic_brand_footer(source_name).sub("", text)
 
-    # 13. Nombres de autores sueltos
+    # 9. Section cutoff: solo si el match está en la 2da mitad del texto
+    #    (evita borrar todo si "Tendencias" aparece por accidente en el cuerpo)
+    text = _safe_section_cutoff(text, _SECTION_CUTOFF_PATTERN, min_position=0.5)
+
+    # 10. Nombres de autores sueltos
     if authors:
         text = _remove_author_lines(text, authors)
 
-    # 14. Normalizar espacios
+    # 11. Normalizar espacios
     text = _TRAILING_SPACES.sub("", text)
     text = _MULTI_NEWLINES.sub("\n\n", text)
     text = text.strip()

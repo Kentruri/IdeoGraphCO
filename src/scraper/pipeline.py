@@ -80,8 +80,13 @@ def process_url(
     llm_model: str,
     min_chars: int,
     use_llm_filter: bool,
+    filter_log_path: Path | None = None,
 ) -> tuple[dict | None, str]:
-    """Procesa una URL: scrape + clean + filter. Retorna (article, motivo_si_skip)."""
+    """Procesa una URL: scrape + clean + filter. Retorna (article, motivo_si_skip).
+
+    Si filter_log_path es dado, escribe una línea JSONL con la decisión del
+    filter LLM (tanto keep como drop) para análisis posterior.
+    """
     if is_already_scraped(article_url):
         return None, "dup"
 
@@ -95,15 +100,38 @@ def process_url(
     # Re-aplicar cleaner (idempotente). extract_article ya lo aplicó, pero
     # esto deja explícito que el cleaning forma parte del pipeline.
     article["text"] = clean_article_text(
-        article["text"], authors=article.get("authors"),
+        article["text"],
+        source_name=source,
+        authors=article.get("authors"),
     )
     if len(article["text"]) < min_chars:
         return None, "too_short"
 
     if use_llm_filter:
         is_political, info = is_real_article(llm_client, article["text"], llm_model)
+
+        # Log estructurado: registra TODA decisión (keep + drop) con confidence
+        # y reason. Permite analizar distribución y calibrar umbrales sin
+        # parsear regex sobre stdout.
+        if filter_log_path is not None and info is not None:
+            append_filter_decision(filter_log_path, {
+                "id": article.get("id"),
+                "url": article_url,
+                "source": source,
+                "category": info.get("category"),
+                "confidence": info.get("confidence"),
+                "reason": info.get("reason"),
+                "kept": is_political,
+            })
+
         if not is_political:
             cat = (info or {}).get("category", "filter_fail")
+            reason = (info or {}).get("reason", "")
+            conf = (info or {}).get("confidence")
+            if reason:
+                conf_str = f"{conf:.2f}" if isinstance(conf, (int, float)) else "?"
+                logger.debug("Filter descartó [%s conf=%s] %s — %s",
+                             cat, conf_str, article_url[:60], reason[:120])
             return None, f"filter:{cat}"
 
     return article, "kept"
@@ -111,6 +139,19 @@ def process_url(
 
 def append_jsonl(path: Path, record: dict) -> None:
     """Escribe un registro al JSONL y hace flush para no perder en crashes."""
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        f.flush()
+
+
+def append_filter_decision(path: Path, record: dict) -> None:
+    """Registra una decisión del filter LLM en JSONL.
+
+    Cada línea es una decisión (keep o drop) con id, url, source, category,
+    confidence, reason, kept. Útil para analizar después la distribución de
+    confidence y calibrar umbrales sin re-correr el scraping.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
         f.flush()
@@ -126,6 +167,7 @@ def scrape_pipeline(
     min_chars: int = 800,
     rate_limit_filter: float = 4.5,
     only_sources: list[str] | None = None,
+    filter_log_path: Path | None = None,
 ) -> dict[str, int]:
     """Corre el pipeline completo sobre las fuentes dadas.
 
@@ -140,6 +182,9 @@ def scrape_pipeline(
         min_chars: longitud mínima del texto post-cleaning
         rate_limit_filter: segundos a esperar entre llamadas LLM
         only_sources: si se da, solo procesa estas fuentes (default: todas)
+        filter_log_path: si se da, registra cada decisión del filter LLM en
+            ese JSONL (id, category, confidence, reason, kept). Útil para
+            calibrar el filtro y analizar distribución de confianza.
 
     Returns:
         dict con contadores agregados: {kept, scrape_fail, dup, robot,
@@ -199,6 +244,7 @@ def scrape_pipeline(
                 llm_model=llm_model,
                 min_chars=min_chars,
                 use_llm_filter=use_llm_filter,
+                filter_log_path=filter_log_path,
             )
             counts[reason] = counts.get(reason, 0) + 1
 
