@@ -11,9 +11,9 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from src.labeling.codebook import build_system_prompt
-from src.paths import INTERIM_DIR, RAW_DIR
-from src.utils.ids import article_id
+from src.agents.silver.codebook import build_system_prompt
+from src.core.paths import INTERIM_DIR, RAW_DIR
+from src.core.ids import article_id
 
 logger = logging.getLogger(__name__)
 

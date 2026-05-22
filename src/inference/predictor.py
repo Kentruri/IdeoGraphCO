@@ -5,7 +5,8 @@ from pathlib import Path
 import torch
 from transformers import AutoTokenizer
 
-from src.models.ideovect_model import AXIS_NAMES, IdeoVectModel
+from src.core.schema import AXIS_NAMES
+from src.training.models.ideovect_model import IdeoVectModel
 
 
 class IdeoVectPredictor:

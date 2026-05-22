@@ -9,7 +9,7 @@ import hashlib
 import sqlite3
 from pathlib import Path
 
-from src.paths import DATA_DIR
+from src.core.paths import DATA_DIR
 
 DB_PATH = DATA_DIR / "scraper_history.db"
 

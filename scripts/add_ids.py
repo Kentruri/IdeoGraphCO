@@ -14,7 +14,7 @@ import json
 import shutil
 from pathlib import Path
 
-from src.utils.ids import article_id
+from src.core.ids import article_id
 
 
 DEFAULT_FILES = [

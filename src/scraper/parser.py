@@ -19,15 +19,15 @@ import trafilatura
 from trafilatura.sitemaps import sitemap_search
 from tqdm import tqdm
 
-from src.data.scraping.cleaner import clean_article_text
-from src.data.scraping.db import (
+from src.scraper.cleaner import clean_article_text
+from src.scraper.db import (
     compute_content_hash,
     is_already_scraped,
     is_duplicate_content,
     mark_as_scraped,
 )
-from src.data.scraping.robots import is_url_allowed
-from src.utils.ids import article_id
+from src.scraper.robots import is_url_allowed
+from src.core.ids import article_id
 
 logger = logging.getLogger(__name__)
 

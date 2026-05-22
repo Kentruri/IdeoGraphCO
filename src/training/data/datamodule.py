@@ -20,7 +20,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset, random_split
 
-from src.data.dataset import IdeoGraphDataset
+from src.training.data.dataset import IdeoGraphDataset
 
 
 def _seed_worker(worker_id: int) -> None:

@@ -230,7 +230,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from src.paths import RAW_DIR, ROOT
+    from src.core.paths import RAW_DIR, ROOT
 
     input_path = Path(args.input) if args.input else RAW_DIR / "news_filtered.jsonl"
     annotation_dir = ROOT / "annotation"

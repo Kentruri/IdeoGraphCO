@@ -40,8 +40,8 @@ import sys
 import time
 from pathlib import Path
 
-from src.benchmark.registry import AVAILABLE_MODELS
-from src.paths import LOGS_DIR
+from src.training.benchmark.registry import AVAILABLE_MODELS
+from src.core.paths import LOGS_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

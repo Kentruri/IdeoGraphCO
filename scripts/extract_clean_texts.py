@@ -36,7 +36,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from src.paths import INTERIM_DIR, RAW_DIR
+    from src.core.paths import INTERIM_DIR, RAW_DIR
 
     input_path = Path(args.input) if args.input else INTERIM_DIR / "labeled_news_clean.jsonl"
     output_path = Path(args.output) if args.output else RAW_DIR / "news_filtered.jsonl"

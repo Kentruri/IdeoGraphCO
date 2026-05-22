@@ -15,8 +15,8 @@ import json
 import logging
 from urllib.parse import urlparse
 
-from src.data.scraping.cleaner import clean_article_text
-from src.paths import RAW_DIR
+from src.scraper.cleaner import clean_article_text
+from src.core.paths import RAW_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

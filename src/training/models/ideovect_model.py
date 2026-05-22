@@ -11,18 +11,8 @@ import torch.nn as nn
 from torchmetrics.regression import MeanSquaredError, R2Score
 from transformers import AutoModel, get_linear_schedule_with_warmup
 
-
-# Los 8 ejes ideológicos en orden canónico — fuente de verdad
-AXIS_NAMES: list[str] = [
-    "personalismo",
-    "institucionalismo",
-    "populismo",
-    "doctrinarismo",
-    "soberanismo",
-    "globalismo",
-    "conservadurismo",
-    "progresismo",
-]
+# Fuente única de los nombres de ejes
+from src.core.schema import AXIS_NAMES
 
 
 class IdeoVectModel(L.LightningModule):

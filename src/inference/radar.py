@@ -4,7 +4,7 @@ from pathlib import Path
 
 import plotly.graph_objects as go
 
-from src.models.ideovect_model import AXIS_NAMES
+from src.core.schema import AXIS_NAMES
 
 # Etiquetas legibles para el gráfico
 AXIS_LABELS: dict[str, str] = {

@@ -106,9 +106,9 @@ def main() -> None:
         logger.error("Instala el SDK: pip install google-genai")
         return
 
-    from src.data.scraping.cleaner import clean_article_text
-    from src.labeling.article_filter import is_real_article
-    from src.paths import INTERIM_DIR
+    from src.scraper.cleaner import clean_article_text
+    from src.scraper.article_filter import is_real_article
+    from src.core.paths import INTERIM_DIR
 
     # Rutas
     input_path = Path(args.input) if args.input else INTERIM_DIR / "labeled_news.jsonl"

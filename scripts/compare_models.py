@@ -423,7 +423,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from src.paths import LOGS_DIR, ROOT
+    from src.core.paths import LOGS_DIR, ROOT
 
     benchmark_dir = Path(args.benchmark_dir) if args.benchmark_dir else LOGS_DIR / "benchmark"
     output_dir = Path(args.output_dir) if args.output_dir else ROOT / "reports"

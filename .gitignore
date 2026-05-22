@@ -1,5 +1,11 @@
-# Data (versionado con DVC) — solo la carpeta raíz, no src/data/
-/data/
+# Data versionada con DVC: el contenido real lo guarda DVC,
+# los archivos .dvc (metadatos) sí van a git.
+# DVC crea su propio .gitignore dentro de cada carpeta versionada.
+data/scraper_history.db
+**/.label_cursor
+**/.filter_cursor
+**/.clean_cursor
+*.bak
 
 # Logs y checkpoints
 logs/
@@ -36,3 +42,6 @@ Thumbs.db
 # MLflow / Weights & Biases
 mlruns/
 wandb/
+
+# Claude Code (config local del IDE)
+.claude/

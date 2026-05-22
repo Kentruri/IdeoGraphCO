@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.paths import INTERIM_DIR, ROOT
+from src.core.paths import INTERIM_DIR, ROOT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

@@ -18,9 +18,9 @@ import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from omegaconf import DictConfig, OmegaConf
 
-from src.data.datamodule import IdeoGraphDataModule
-from src.models.ideovect_model import IdeoVectModel
-from src.paths import CONFIGS_DIR, LOGS_DIR
+from src.training.data.datamodule import IdeoGraphDataModule
+from src.training.models.ideovect_model import IdeoVectModel
+from src.core.paths import CONFIGS_DIR, LOGS_DIR
 
 
 def _resolve_precision(cfg_precision: str) -> str | int:

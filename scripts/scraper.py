@@ -18,9 +18,9 @@ from collections import Counter
 
 from tqdm import tqdm
 
-from src.data.scraping import get_scraped_count, scrape_source
-from src.data.sources import CATEGORIES, SOURCES, SOURCES_BY_CATEGORY
-from src.paths import RAW_DIR
+from src.scraper import get_scraped_count, scrape_source
+from src.scraper.sources import CATEGORIES, SOURCES, SOURCES_BY_CATEGORY
+from src.core.paths import RAW_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

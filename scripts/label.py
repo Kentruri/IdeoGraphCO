@@ -73,7 +73,7 @@ def main() -> None:
         return
 
     from pathlib import Path
-    from src.labeling.judge import label_news_file
+    from src.agents.silver.judge import label_news_file
 
     client = genai.Client(api_key=api_key)
     input_path = Path(args.input) if args.input else None

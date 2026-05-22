@@ -1,19 +1,22 @@
 """Pre-computa los splits train/val/test y los guarda a disco.
 
-Garantiza que TODOS los modelos del benchmark usen exactamente los mismos
-índices, incluso si se añaden nuevas muestras al JSONL en el futuro.
+Diseño:
+- **test** = los artículos del gold set humano (anotación manual). Estos NUNCA
+  se mezclan con train/val. Sus IDs se leen de `annotation/gold_set_v1_ids.json`.
+- **train/val** = el resto del corpus (silver labels del LLM), dividido
+  aleatoriamente con semilla determinista.
 
 Por qué hacerlo en archivo separado:
-- Si mañana scrapeas 50 artículos más y los añades a labeled_news_clean.jsonl,
-  los índices de un random_split cambian aunque uses la misma semilla.
-- Pre-computar a disco "congela" el split a 1145 muestras (o las que tengas hoy).
-- Para una nueva corrida con más datos, generas un nuevo splits.json
-  (ej: splits_v2.json) sin tocar el anterior.
+- Si mañana scrapeas más artículos y los añades al JSONL etiquetado, los
+  índices de un random_split cambian aunque uses la misma semilla.
+- Pre-computar a disco "congela" el split a los artículos que tengas hoy.
+- El test = gold siempre es el mismo, sin importar cuánto crezca el corpus.
 
 Uso:
     python scripts/prepare_splits.py
-    python scripts/prepare_splits.py --output data/processed/splits.json
-    python scripts/prepare_splits.py --val-split 0.15 --test-split 0.15 --seed 42
+    python scripts/prepare_splits.py --val-ratio 0.15 --seed 42
+    python scripts/prepare_splits.py --gold-ids annotation/gold_set_v1_ids.json
+    python scripts/prepare_splits.py --no-gold   # split tradicional sin gold
 """
 
 import argparse
@@ -30,58 +33,128 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Pre-computa splits train/val/test")
     parser.add_argument(
         "--input", type=str, default=None,
-        help="JSONL etiquetado (default: data/interim/labeled_news_clean.jsonl)",
+        help="JSONL etiquetado (default: data/interim/labeled_news.jsonl)",
     )
     parser.add_argument(
         "--output", type=str, default=None,
         help="Archivo de splits (default: data/processed/splits.json)",
     )
-    parser.add_argument("--val-split", type=float, default=0.15)
-    parser.add_argument("--test-split", type=float, default=0.15)
+    parser.add_argument(
+        "--gold-ids", type=str, default=None,
+        help="JSON con IDs del gold set (default: annotation/gold_set_v1_ids.json). "
+             "Si existe, esos artículos forman el test set; el resto se divide train/val.",
+    )
+    parser.add_argument(
+        "--no-gold", action="store_true",
+        help="No usar gold set: hace split tradicional train/val/test al azar.",
+    )
+    parser.add_argument(
+        "--val-ratio", type=float, default=0.15,
+        help="Fracción de los NO-gold que va a val (default: 0.15 ≈ 15%%).",
+    )
+    parser.add_argument(
+        "--test-ratio-fallback", type=float, default=0.15,
+        help="Solo en modo --no-gold: fracción que va a test (default: 0.15).",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    from src.paths import INTERIM_DIR, PROCESSED_DIR
+    from src.core.paths import INTERIM_DIR, PROCESSED_DIR, ROOT
 
-    input_path = Path(args.input) if args.input else INTERIM_DIR / "labeled_news_clean.jsonl"
+    input_path = Path(args.input) if args.input else INTERIM_DIR / "labeled_news.jsonl"
     if not input_path.exists():
-        # Fallback al archivo sin filtrar si no existe el filtrado
-        fallback = INTERIM_DIR / "labeled_news.jsonl"
-        if fallback.exists():
-            logger.warning(
-                "No existe %s, usando %s en su lugar", input_path, fallback,
-            )
-            input_path = fallback
-        else:
-            logger.error("No existe ningún JSONL etiquetado. Corre el labeling primero.")
-            return
+        logger.error("No existe %s. Corre el labeling primero.", input_path)
+        return
 
     output_path = Path(args.output) if args.output else PROCESSED_DIR / "splits.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Contar líneas del JSONL
+    # Cargar el corpus con sus IDs
+    articles: list[dict] = []
     with open(input_path, encoding="utf-8") as f:
-        total = sum(1 for line in f if line.strip())
+        for line in f:
+            line = line.strip()
+            if line:
+                articles.append(json.loads(line))
+    total = len(articles)
+    if total == 0:
+        logger.error("El JSONL está vacío.")
+        return
 
-    test_size = int(total * args.test_split)
-    val_size = int(total * args.val_split)
-    train_size = total - val_size - test_size
+    # Cargar IDs gold (si aplica)
+    gold_ids: set[str] = set()
+    if not args.no_gold:
+        gold_path = (
+            Path(args.gold_ids) if args.gold_ids
+            else ROOT / "annotation" / "gold_set_v1_ids.json"
+        )
+        if gold_path.exists():
+            with open(gold_path, encoding="utf-8") as f:
+                gold_ids = set(json.load(f))
+            logger.info("Gold set: %d IDs cargados desde %s", len(gold_ids), gold_path)
+        else:
+            logger.warning(
+                "No existe %s — split tradicional sin gold set.", gold_path,
+            )
 
-    # Mezcla determinista
-    indices = list(range(total))
+    # Separar índices gold vs no-gold por `id`
+    gold_indices: list[int] = []
+    nongold_indices: list[int] = []
+    articles_sin_id = 0
+    for i, a in enumerate(articles):
+        aid = a.get("id")
+        if not aid:
+            articles_sin_id += 1
+        if aid and aid in gold_ids:
+            gold_indices.append(i)
+        else:
+            nongold_indices.append(i)
+
+    if articles_sin_id > 0:
+        logger.warning(
+            "%d artículos sin campo `id`. Corre scripts/add_ids.py primero.",
+            articles_sin_id,
+        )
+
+    # Diagnóstico: gold IDs que no aparecen en el JSONL etiquetado
+    found_gold = {articles[i].get("id") for i in gold_indices}
+    missing_gold = gold_ids - found_gold
+    if missing_gold:
+        logger.warning(
+            "%d IDs del gold set NO están en el JSONL etiquetado (probablemente "
+            "fallaron en el labeling). Esos no irán a test.",
+            len(missing_gold),
+        )
+
+    # Mezcla determinista de los NO-gold
     rng = random.Random(args.seed)
-    rng.shuffle(indices)
+    rng.shuffle(nongold_indices)
 
-    train_ids = sorted(indices[:train_size])
-    val_ids = sorted(indices[train_size:train_size + val_size])
-    test_ids = sorted(indices[train_size + val_size:])
+    if args.no_gold or not gold_indices:
+        # Split tradicional sin gold
+        test_size = int(len(nongold_indices) * args.test_ratio_fallback)
+        val_size = int(len(nongold_indices) * args.val_ratio)
+        train_size = len(nongold_indices) - val_size - test_size
+        train_ids = sorted(nongold_indices[:train_size])
+        val_ids = sorted(nongold_indices[train_size:train_size + val_size])
+        test_ids = sorted(nongold_indices[train_size + val_size:])
+        gold_used = False
+    else:
+        # Split con gold: test = gold, train/val = no-gold
+        val_size = int(len(nongold_indices) * args.val_ratio)
+        train_size = len(nongold_indices) - val_size
+        train_ids = sorted(nongold_indices[:train_size])
+        val_ids = sorted(nongold_indices[train_size:])
+        test_ids = sorted(gold_indices)
+        gold_used = True
 
     splits = {
         "source_file": str(input_path),
         "total_samples": total,
         "seed": args.seed,
-        "val_split": args.val_split,
-        "test_split": args.test_split,
+        "val_ratio": args.val_ratio,
+        "gold_used": gold_used,
+        "gold_ids_file": str(gold_path) if not args.no_gold and gold_ids else None,
         "train": train_ids,
         "val": val_ids,
         "test": test_ids,
@@ -90,16 +163,20 @@ def main() -> None:
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(splits, f, indent=2)
 
+    pct = lambda n: f"{100*n/total:.1f}%"
     print()
     print("=" * 60)
     print("  SPLITS GENERADOS")
-    print(f"  Fuente: {input_path}")
-    print(f"  Total muestras: {total}")
-    print(f"  Train: {len(train_ids)} ({len(train_ids)*100/total:.1f}%)")
-    print(f"  Val:   {len(val_ids)} ({len(val_ids)*100/total:.1f}%)")
-    print(f"  Test:  {len(test_ids)} ({len(test_ids)*100/total:.1f}%)")
-    print(f"  Semilla: {args.seed}")
-    print(f"  Salida: {output_path}")
+    print(f"  Fuente:        {input_path}")
+    print(f"  Total:         {total} artículos")
+    print(f"  Gold-aware:    {'SÍ (test = gold humano)' if gold_used else 'NO (split aleatorio)'}")
+    print(f"  Train:         {len(train_ids):4d}  ({pct(len(train_ids))})")
+    print(f"  Val:           {len(val_ids):4d}  ({pct(len(val_ids))})")
+    print(f"  Test:          {len(test_ids):4d}  ({pct(len(test_ids))})")
+    if gold_used and missing_gold:
+        print(f"  ⚠ Gold faltantes en JSONL: {len(missing_gold)}")
+    print(f"  Semilla:       {args.seed}")
+    print(f"  Salida:        {output_path}")
     print("=" * 60)
     print()
 

@@ -18,7 +18,7 @@ import torch
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 
-from src.models.ideovect_model import AXIS_NAMES
+from src.core.schema import AXIS_NAMES
 
 
 class IdeoGraphDataset(Dataset):
