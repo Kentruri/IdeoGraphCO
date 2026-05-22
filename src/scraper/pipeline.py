@@ -81,11 +81,15 @@ def process_url(
     min_chars: int,
     use_llm_filter: bool,
     filter_log_path: Path | None = None,
+    escalate_model: str | None = "gemini-2.5-flash",
+    escalate_threshold: float = 0.7,
 ) -> tuple[dict | None, str]:
     """Procesa una URL: scrape + clean + filter. Retorna (article, motivo_si_skip).
 
     Si filter_log_path es dado, escribe una línea JSONL con la decisión del
-    filter LLM (tanto keep como drop) para análisis posterior.
+    filter LLM (tanto keep como drop) para análisis posterior. Si el modelo
+    primario duda (confidence < escalate_threshold), escala automáticamente
+    al escalate_model.
     """
     if is_already_scraped(article_url):
         return None, "dup"
@@ -108,11 +112,17 @@ def process_url(
         return None, "too_short"
 
     if use_llm_filter:
-        is_political, info = is_real_article(llm_client, article["text"], llm_model)
+        is_political, info = is_real_article(
+            llm_client,
+            article["text"],
+            model=llm_model,
+            escalate_model=escalate_model,
+            escalate_threshold=escalate_threshold,
+        )
 
         # Log estructurado: registra TODA decisión (keep + drop) con confidence
         # y reason. Permite analizar distribución y calibrar umbrales sin
-        # parsear regex sobre stdout.
+        # parsear regex sobre stdout. Incluye el flag `escalated`.
         if filter_log_path is not None and info is not None:
             append_filter_decision(filter_log_path, {
                 "id": article.get("id"),
@@ -122,16 +132,20 @@ def process_url(
                 "confidence": info.get("confidence"),
                 "reason": info.get("reason"),
                 "kept": is_political,
+                "escalated": info.get("escalated", False),
+                "primary_confidence": info.get("primary_confidence"),
             })
 
         if not is_political:
             cat = (info or {}).get("category", "filter_fail")
             reason = (info or {}).get("reason", "")
             conf = (info or {}).get("confidence")
+            esc = (info or {}).get("escalated", False)
             if reason:
                 conf_str = f"{conf:.2f}" if isinstance(conf, (int, float)) else "?"
-                logger.debug("Filter descartó [%s conf=%s] %s — %s",
-                             cat, conf_str, article_url[:60], reason[:120])
+                esc_tag = " [escalated]" if esc else ""
+                logger.debug("Filter descartó [%s conf=%s]%s %s — %s",
+                             cat, conf_str, esc_tag, article_url[:60], reason[:120])
             return None, f"filter:{cat}"
 
     return article, "kept"
@@ -168,6 +182,8 @@ def scrape_pipeline(
     rate_limit_filter: float = 4.5,
     only_sources: list[str] | None = None,
     filter_log_path: Path | None = None,
+    escalate_model: str | None = "gemini-2.5-flash",
+    escalate_threshold: float = 0.7,
 ) -> dict[str, int]:
     """Corre el pipeline completo sobre las fuentes dadas.
 
@@ -204,6 +220,13 @@ def scrape_pipeline(
     totals: dict[str, int] = {}
     by_source: dict[str, dict[str, int]] = {}
 
+    if use_llm_filter and escalate_model:
+        escalate_info = f"escalado: {escalate_model} si conf<{escalate_threshold}"
+    elif use_llm_filter:
+        escalate_info = "escalado: desactivado"
+    else:
+        escalate_info = "(filter LLM desactivado)"
+
     print()
     print("=" * 60)
     print(f"  IdeoGraphCO — pipeline scrape+clean+filter")
@@ -211,7 +234,10 @@ def scrape_pipeline(
     print(f"  Max/fuente:     {max_per_source}")
     print(f"  Filter LLM:     {'SÍ (' + llm_model + ')' if use_llm_filter else 'NO'}")
     print(f"  Min chars:      {min_chars}")
+    print(f"  {escalate_info}")
     print(f"  Salida:         {output_path}")
+    if filter_log_path:
+        print(f"  Filter log:     {filter_log_path}")
     print("=" * 60)
     print()
 
@@ -245,6 +271,8 @@ def scrape_pipeline(
                 min_chars=min_chars,
                 use_llm_filter=use_llm_filter,
                 filter_log_path=filter_log_path,
+                escalate_model=escalate_model,
+                escalate_threshold=escalate_threshold,
             )
             counts[reason] = counts.get(reason, 0) + 1
 

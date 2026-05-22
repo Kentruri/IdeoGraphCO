@@ -65,11 +65,15 @@ def main() -> None:
     total = len(decisions)
     n_kept = sum(1 for d in decisions if d.get("kept"))
     n_drop = total - n_kept
+    n_escalated = sum(1 for d in decisions if d.get("escalated"))
 
     print(f"\n=== Filter log: {log_path} ===")
     print(f"Total decisiones: {total}")
     print(f"  ✓ Keep (political_article): {n_kept} ({100*n_kept/total:.1f}%)")
     print(f"  ✗ Drop (otras categorías):   {n_drop} ({100*n_drop/total:.1f}%)")
+    if n_escalated > 0:
+        print(f"  ↑ Escaladas a modelo grande: {n_escalated} "
+              f"({100*n_escalated/total:.1f}%) — gasto extra de API")
 
     # --- Distribución de confidence global ---
     all_confs = sorted(

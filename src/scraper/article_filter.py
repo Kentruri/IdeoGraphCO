@@ -111,22 +111,33 @@ def is_real_article(
     text: str,
     model: str = "gemini-2.5-flash-lite",
     max_chars: int = 3000,
+    escalate_model: str | None = "gemini-2.5-flash",
+    escalate_threshold: float = 0.7,
 ) -> tuple[bool, dict | None]:
     """Pregunta al LLM si el texto es un artículo POLÍTICO real.
+
+    Si la confianza del modelo principal es baja (< escalate_threshold), se
+    re-llama automáticamente con un modelo más caro (escalate_model) y se
+    usa esa decisión como definitiva. La decisión escalada queda marcada con
+    `escalated: true` para análisis posterior.
 
     Args:
         client: Cliente de Google GenAI.
         text: Texto del artículo.
-        model: Modelo de Gemini a usar.
-        max_chars: Caracteres iniciales del texto a enviar al LLM. 3000 ≈ 500
-            palabras: cubre intro periodística + cuerpo (los artículos
-            colombianos de fondo a veces tienen anécdota larga antes del meollo
-            político). Con flash-lite el costo extra vs 1500 es despreciable.
+        model: Modelo primario. Default flash-lite (barato).
+        max_chars: Caracteres iniciales del texto a enviar al LLM.
+        escalate_model: Modelo a usar cuando el primario duda. Default
+            gemini-2.5-flash (~4x más caro pero más preciso). Pasa None
+            para desactivar el escalado.
+        escalate_threshold: Si confidence < este valor, escala al
+            escalate_model. Default 0.7.
 
     Returns:
-        Tupla (es_político_artículo, info) donde info es el JSON parseado
-        con campos category, confidence, reason. Solo retorna True si la
-        categoría es "political_article".
+        Tupla (es_político_artículo, info). `info` incluye:
+            - category, confidence, reason: respuesta del LLM
+            - escalated (bool): si se usó el modelo escalado
+            - primary_confidence (opcional): confianza del modelo primario
+              cuando se escala (útil para diagnóstico)
     """
     truncated = text[:max_chars]
     response = call_filter_with_retry(client, model, truncated)
@@ -136,6 +147,25 @@ def is_real_article(
     data = parse_filter_response(response)
     if data is None:
         return False, None
+
+    data["escalated"] = False
+
+    # Escalado automático: si el modelo primario duda, re-llamar con el
+    # modelo más caro y usar esa respuesta como definitiva.
+    conf = data.get("confidence")
+    if (
+        escalate_model
+        and isinstance(conf, (int, float))
+        and conf < escalate_threshold
+    ):
+        primary_conf = conf
+        response_esc = call_filter_with_retry(client, escalate_model, truncated)
+        if response_esc is not None:
+            data_esc = parse_filter_response(response_esc)
+            if data_esc is not None:
+                data = data_esc
+                data["escalated"] = True
+                data["primary_confidence"] = primary_conf
 
     is_political = data.get("category") == "political_article"
     return is_political, data

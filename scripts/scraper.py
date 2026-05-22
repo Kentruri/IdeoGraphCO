@@ -90,6 +90,20 @@ def main() -> None:
         help="Segundos entre llamadas al filter LLM (default: 4.5)",
     )
     parser.add_argument(
+        "--escalate-model", type=str, default="gemini-2.5-flash",
+        help="Modelo al que escalar cuando el primario duda "
+             "(default: gemini-2.5-flash, ~4x más caro). "
+             "Usa --no-escalate para desactivar.",
+    )
+    parser.add_argument(
+        "--escalate-threshold", type=float, default=0.7,
+        help="Si confidence < este valor, se escala al modelo más caro (default: 0.7)",
+    )
+    parser.add_argument(
+        "--no-escalate", action="store_true",
+        help="Desactiva el escalado automático (siempre usa el modelo primario).",
+    )
+    parser.add_argument(
         "--log-level", default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Verbosidad de logs en stdout (default: INFO)",
@@ -154,6 +168,8 @@ def main() -> None:
         get_scraped_count(),
     )
 
+    escalate_model = None if args.no_escalate else args.escalate_model
+
     scrape_pipeline(
         sources=selected_sources,
         output_path=output_path,
@@ -164,6 +180,8 @@ def main() -> None:
         min_chars=args.min_chars,
         rate_limit_filter=args.rate_limit,
         filter_log_path=filter_log_path,
+        escalate_model=escalate_model,
+        escalate_threshold=args.escalate_threshold,
     )
 
 

@@ -278,7 +278,7 @@ SOURCES: dict[str, dict] = {
     },
     "corteconstitucional": {
         "url": "https://www.corteconstitucional.gov.co",
-        "category": "institucional",
+        "category": "judicial",
         "mode": "direct",
         "url_filters": [],
         "rss_feeds": [],
@@ -590,21 +590,121 @@ SOURCES: dict[str, dict] = {
     },
     "jep": {
         "url": "https://www.jep.gov.co",
-        "category": "institucional",
+        "category": "judicial",
         "mode": "direct",
         "url_filters": [],
         "rss_feeds": [],
     },
     "fiscalia": {
         "url": "https://www.fiscalia.gov.co",
-        "category": "institucional",
+        "category": "judicial",
         "mode": "direct",
         "url_filters": [],
         "rss_feeds": [],
     },
     "procuraduria": {
         "url": "https://www.procuraduria.gov.co",
-        "category": "institucional",
+        "category": "judicial",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+
+    # =======================================================================
+    # AMPLIACIÓN 2 — Internacional, judicial, regionales étnicos, think tanks
+    # =======================================================================
+
+    # --- Internacional con foco en Colombia ---
+    "elpais_america": {
+        "url": "https://elpais.com/america-colombia/",
+        "category": "nacional",
+        "mode": "sitemap",
+        "url_filters": [
+            "/america-colombia/", "/politica/", "/sociedad/", "/opinion/",
+        ],
+        "rss_feeds": ["https://elpais.com/rss/america/colombia.xml"],
+    },
+
+    # --- Judicial / técnico-legal (nueva categoría) ---
+    "ambitojuridico": {
+        "url": "https://www.ambitojuridico.com",
+        "category": "judicial",
+        "mode": "sitemap",
+        "url_filters": [
+            "/nacional/", "/administrativo/", "/constitucional/",
+            "/penal/", "/laboral/",
+        ],
+        "rss_feeds": ["https://www.ambitojuridico.com/rss"],
+    },
+    "legis": {
+        # OJO: paywall fuerte en buena parte del sitio; el filter LLM va a
+        # descartar mucho como "garbage" si solo agarra previews.
+        "url": "https://www.legis.com.co",
+        "category": "judicial",
+        "mode": "sitemap",
+        "url_filters": ["/legislacion/", "/jurisprudencia/", "/doctrina/"],
+        "rss_feeds": [],
+    },
+
+    # --- Regionales territoriales (zonas críticas no cubiertas antes) ---
+    "choco7dias": {
+        "url": "https://choco7dias.com",
+        "category": "regional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://choco7dias.com/feed/"],
+    },
+    "elmeridiano": {
+        "url": "https://elmeridiano.co",
+        "category": "regional",
+        "mode": "sitemap",
+        "url_filters": ["/politica/", "/judicial/", "/opinion/", "/cordoba/"],
+        "rss_feeds": ["https://elmeridiano.co/feed/"],
+    },
+    "periodicodelmeta": {
+        "url": "https://periodicodelmeta.com",
+        "category": "regional",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://periodicodelmeta.com/feed/"],
+    },
+    "diariodelhuila": {
+        "url": "https://www.diariodelhuila.com",
+        "category": "regional",
+        "mode": "sitemap",
+        "url_filters": [
+            "/politica/", "/economia/", "/judicial/", "/opinion/",
+        ],
+        "rss_feeds": ["https://www.diariodelhuila.com/feed/"],
+    },
+
+    # --- Voces étnicas y territoriales (representación) ---
+    "agendapropia": {
+        "url": "https://agendapropia.co",
+        "category": "independiente",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://agendapropia.co/feed/"],
+    },
+    "viveafro": {
+        "url": "https://revista-viveafro.com",
+        "category": "independiente",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": ["https://revista-viveafro.com/feed/"],
+    },
+
+    # --- Think tanks adicionales (agenda política y electoral) ---
+    "fip": {
+        "url": "https://www.ideaspaz.org",
+        "category": "opinion",
+        "mode": "direct",
+        "url_filters": [],
+        "rss_feeds": [],
+    },
+    "moe": {
+        "url": "https://www.moe.org.co",
+        "category": "opinion",
         "mode": "direct",
         "url_filters": [],
         "rss_feeds": [],

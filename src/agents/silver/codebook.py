@@ -1,16 +1,20 @@
 """Codebook político — define los 8 ejes ideológicos y sus criterios de evaluación.
 
-Este codebook se inyecta como system prompt al LLM-as-a-Judge para que
-califique cada noticia con un entero de 1 a 5 en cada eje, alineado con
-la bitácora de anotación humana (PDF) para garantizar consistencia entre
-labels silver (LLM) y gold (humano).
+El LLM-as-a-Judge (silver) califica cada eje DIRECTAMENTE en [0.0, 1.0]
+como un score continuo. Los 5 niveles del codebook (Ausente, Leve,
+Moderado, Marcado, Dominante) son SOLO referencias semánticas
+aproximadas para que el modelo entienda el rango — no son anclajes
+obligatorios. El LLM puede dar 0.02, 0.42, 0.83 o cualquier valor.
 
-Mapeo a 0-1 (para el modelo) lo hace src.labeling.judge.normalize_labels:
-    1 (Ausente)   → 0.00
-    2 (Leve)      → 0.25
-    3 (Moderado)  → 0.50
-    4 (Marcado)   → 0.75
-    5 (Dominante) → 1.00
+Referencias aproximadas (no obligatorias):
+    0.00 ≈ Ausente      0.50 ≈ Moderado     1.00 ≈ Dominante
+    0.25 ≈ Leve         0.75 ≈ Marcado
+
+El gold humano (Excel) sigue siendo entero 1-5 porque los humanos no
+dan decimales consistentes. Para comparar silver vs gold:
+    humano 1 → 0.00 | 2 → 0.25 | 3 → 0.50 | 4 → 0.75 | 5 → 1.00
+    silver: continuo en [0, 1] (ya está en la misma escala)
+Ambos comparables con MAE/MSE/R² en [0, 1].
 """
 
 # ---------------------------------------------------------------------------
@@ -385,10 +389,15 @@ def build_system_prompt(include_examples: bool = False) -> str:
             if not marker.startswith("[TBD"):
                 axes_section += f"- {marker}\n"
 
-        axes_section += "\n**Escala de calibración (entero 1-5):**\n"
+        # Referencias semánticas en [0, 1]. Los niveles 1-5 del codebook
+        # se muestran como aproximaciones: el LLM puede dar cualquier
+        # valor continuo, no solo los anclajes.
+        _LEVEL_TO_UNIT_REF = {"1": "0.00", "2": "0.25", "3": "0.50", "4": "0.75", "5": "1.00"}
+        axes_section += "\n**Referencias semánticas (no anclajes obligatorios):**\n"
         for range_key, description in axis["scale"].items():
             level_name = SCALE_LEVELS.get(range_key, "")
-            axes_section += f"- **{range_key} — {level_name}:** {description}\n"
+            ref_unit = _LEVEL_TO_UNIT_REF.get(range_key, "")
+            axes_section += f"- **≈ {ref_unit} ({level_name}):** {description}\n"
 
         if include_examples and not axis["examples_high"].startswith("[TBD"):
             axes_section += f"\n**Ejemplo score alto:**\n> {axis['examples_high']}\n"
@@ -404,8 +413,14 @@ evaluar una noticia colombiana POLÍTICA y asignar un puntaje de intensidad
 ideológica en 8 dimensiones. Las noticias no-políticas ya fueron descartadas
 aguas arriba por el filter LLM, así que asume que el texto SIEMPRE es político.
 
-Devuelve un JSON con 8 campos enteros (uno por eje), valores 1-5:
-1=Ausente, 2=Leve, 3=Moderado, 4=Marcado, 5=Dominante.
+Devuelve un JSON con 8 campos numéricos (uno por eje) DIRECTAMENTE EN [0.0, 1.0].
+Usa cualquier valor en el rango (0.02, 0.34, 0.71, etc.); no te limites a
+valores "redondos". Refleja con precisión los matices que percibes en el texto.
+
+Los 5 niveles del codebook son SOLO referencias semánticas aproximadas, NO
+anclajes obligatorios:
+    0.00 ≈ Ausente     0.50 ≈ Moderado     1.00 ≈ Dominante
+    0.25 ≈ Leve        0.75 ≈ Marcado
 
 ## EJES IDEOLÓGICOS
 {axes_section}
@@ -416,12 +431,12 @@ Devuelve un JSON con 8 campos enteros (uno por eje), valores 1-5:
 ## FORMATO DE RESPUESTA (solo JSON, nada más)
 
 {{{{
-    "personalismo": 4,
-    "institucionalismo": 2,
-    "populismo": 3,
-    "doctrinarismo": 1,
-    "soberanismo": 1,
-    "globalismo": 1,
-    "conservadurismo": 2,
-    "progresismo": 2
+    "personalismo": 0.78,
+    "institucionalismo": 0.23,
+    "populismo": 0.61,
+    "doctrinarismo": 0.04,
+    "soberanismo": 0.12,
+    "globalismo": 0.03,
+    "conservadurismo": 0.42,
+    "progresismo": 0.31
 }}}}"""

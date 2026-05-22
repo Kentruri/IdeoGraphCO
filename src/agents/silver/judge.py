@@ -42,11 +42,11 @@ def _write_cursor(line_num: int) -> None:
 
 
 def parse_response(response_text: str) -> dict | None:
-    """Extrae el JSON de la respuesta del LLM y valida la escala 1-5.
+    """Extrae el JSON de la respuesta del LLM y valida la escala continua [0, 1].
 
-    Acepta tanto JSON crudo como envuelto en ```json ... ```.
-    Cada eje debe ser un entero (o float redondeable) en [1, 5].
-    Asume que la noticia es política (filter LLM la dejó pasar aguas arriba).
+    Acepta tanto JSON crudo como envuelto en ```json ... ```. Cada eje debe
+    ser un número (entero o float) directamente en [0.0, 1.0]. Valores
+    fuera de rango se acotan.
     """
     text = response_text.strip()
 
@@ -69,26 +69,33 @@ def parse_response(response_text: str) -> dict | None:
             return None
         if not isinstance(data[axis], (int, float)):
             return None
-        # Redondear y acotar a la escala 1-5 (tolera floats por seguridad).
-        data[axis] = max(1, min(5, int(round(data[axis]))))
+        # Acotar a [0.0, 1.0] como float.
+        data[axis] = max(0.0, min(1.0, float(data[axis])))
 
     return data
 
 
-# Mapeo lineal de la escala 1-5 a [0, 1] (paso de 0.25).
-_SCALE_TO_UNIT: dict[int, float] = {1: 0.0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
-
-
 def normalize_labels(data: dict) -> dict:
-    """Mapea la escala 1-5 del codebook a [0, 1] para el modelo.
+    """Devuelve los scores tal cual (ya están en [0, 1]).
 
-    1 (Ausente)   → 0.00
-    2 (Leve)      → 0.25
-    3 (Moderado)  → 0.50
-    4 (Marcado)   → 0.75
-    5 (Dominante) → 1.00
+    Antes esta función mapeaba 1-5 → [0, 1]. Ahora el LLM da el score
+    directamente en la escala objetivo del modelo. La función queda como
+    pasaje + redondeo a 4 decimales para limpiar ruido flotante.
     """
-    return {axis: _SCALE_TO_UNIT[int(data[axis])] for axis in AXIS_NAMES}
+    return {axis: round(float(data[axis]), 4) for axis in AXIS_NAMES}
+
+
+# Schema JSON estructurado para Gemini: cada eje es un número en [0, 1].
+# Garantiza que el LLM no devuelva strings, booleanos ni valores fuera de
+# rango. Elimina la mayoría de la validación defensiva.
+_LABEL_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        axis: {"type": "number", "minimum": 0.0, "maximum": 1.0}
+        for axis in AXIS_NAMES
+    },
+    "required": list(AXIS_NAMES),
+}
 
 
 def _call_gemini_with_retry(
@@ -115,6 +122,7 @@ def _call_gemini_with_retry(
                 config={
                     "system_instruction": system_prompt,
                     "response_mime_type": "application/json",
+                    "response_schema": _LABEL_RESPONSE_SCHEMA,
                     "thinking_config": {"thinking_budget": 0},
                     "max_output_tokens": 2048,
                     "temperature": 0.1,  # baja temperatura para consistencia
