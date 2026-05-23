@@ -5,7 +5,7 @@ mucho) ANTES de gastar horas en un benchmark.
 
 Uso:
     python scripts/analyze_distribution.py
-    python scripts/analyze_distribution.py --input data/interim/labeled_news_clean.jsonl
+    python scripts/analyze_distribution.py --input data/interim/labeled_news.jsonl
 """
 
 import argparse
@@ -26,7 +26,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Analiza distribución de scores por eje")
     parser.add_argument(
         "--input", type=str, default=None,
-        help="JSONL etiquetado (default: data/interim/labeled_news_clean.jsonl)",
+        help="JSONL etiquetado (default: data/interim/labeled_news.jsonl)",
     )
     parser.add_argument(
         "--thresholds", nargs="+", type=float, default=[0.3, 0.5, 0.7],
@@ -36,7 +36,7 @@ def main() -> None:
 
     from src.core.paths import INTERIM_DIR
 
-    input_path = Path(args.input) if args.input else INTERIM_DIR / "labeled_news_clean.jsonl"
+    input_path = Path(args.input) if args.input else INTERIM_DIR / "labeled_news.jsonl"
     if not input_path.exists():
         fallback = INTERIM_DIR / "labeled_news.jsonl"
         if fallback.exists():

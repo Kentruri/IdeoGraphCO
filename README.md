@@ -1,48 +1,50 @@
 # IdeoGraphCO
 
-Sistema de regresión multisalida basado en Transformers para la cuantificación volumétrica y multidimensional de ideologías políticas en el discurso mediático colombiano.
+Sistema de regresión multisalida para cuantificar intensidad ideológica en
+noticias colombianas en 8 dimensiones simultáneas. Salida: vector en `[0,1]⁸`
+representable como radar chart.
 
 ## Setup
 
 ```bash
-# 1. Crear entorno virtual
 python3 -m venv .venv
 source .venv/bin/activate
-
-# 2. Instalar dependencias
 pip install -r requirements.txt
-
-# 3. Configurar variables de entorno
-cp .env.example .env
-# Editar .env y añadir tu GEMINI_API_KEY
+cp .env.example .env   # añadir GEMINI_API_KEY
 ```
 
-## Pipeline
+## Uso rápido
 
 ```bash
-# 1. Scrapear noticias políticas colombianas
-python scripts/scraper.py --max-articles 100
+# 1. Scrape + clean + filter (un solo comando)
+python scripts/scraper.py
 
-# 2. Limpiar el texto
-python scripts/clean.py
+# 2. Labeling silver con LLM
+python scripts/label.py --input data/raw/articles.jsonl
 
-# 3. Etiquetar con LLM-as-a-Judge (Gemini)
-python scripts/label.py
+# 3. Splits + training
+python scripts/prepare_splits.py
+python -m src.training.train
 ```
+
+Pipeline completo en [PIPELINE.md](PIPELINE.md). Detalle por etapa en
+[workflows-guide/](workflows-guide/).
 
 ## Estructura
 
-- `src/data/scraping/` — Scraper con trafilatura, sitemaps y RSS
-- `src/labeling/` — Pipeline LLM-as-a-Judge (codebook + Gemini)
-- `src/models/` — IdeoVectModel (ConfliBERT + 8 cabezas de regresión)
-- `src/training/` — Entrenamiento con Lightning + Hydra
-- `src/inference/` — Predicción + radar charts
-- `configs/` — Configuración Hydra (model, data, trainer)
-- `scripts/` — CLIs (scraper, clean, label)
+```
+src/
+├── core/          # ids, paths, schema (AXIS_NAMES único)
+├── scraper/       # scraping + cleaning + filter LLM
+├── agents/silver/ # LLM-as-a-Judge
+├── training/      # data, models, train, benchmark
+└── inference/     # predict + radar charts
+```
 
-## Stack técnico
+## Stack
 
 - PyTorch Lightning + Hydra
-- ConfliBERT-Spanish (encoder pre-entrenado)
-- Trafilatura (extracción de artículos)
-- Gemini API (LLM-as-a-Judge para etiquetado silver)
+- ConfliBERT-Spanish (encoder)
+- Trafilatura (scraping)
+- Gemini API (silver labels, filter)
+- DVC (versionado de datos)

@@ -85,10 +85,10 @@ AXIS_DEFINITIONS: dict[str, dict] = {
         ],
         "scale": {
             "1": "No hay referencias a instituciones, leyes ni procedimientos formales; se ignoran o desestiman esos canales",
-            "2": "Se menciona una institución o norma de manera tangencial, sin que estructure el argumento",
-            "3": "Las instituciones o los procedimientos legales articulan parte importante del argumento o la narrativa con un balance con los actores personales",
-            "4": "La defensa de la legalidad, los fallos judiciales o el apego a los trámites aparecen de forma repetida y central",
-            "5": "El texto se estructura casi en su totalidad en torno a la necesidad de seguir los canales institucionales (Constitución, cortes, debido proceso), condenando vías de hecho",
+            "2": "Las instituciones aparecen como SUJETOS gramaticales de la acción (ej. 'el Congreso aprobó', 'la Corte determinó') sin que el texto argumente sobre la importancia del procedimiento. La narrativa es informativa, no valorativa",
+            "3": "El texto valora positivamente algún proceso formal o respalda un fallo, pero esto se equilibra con otros marcos (pelea entre líderes, posturas ideológicas, etc.). Tono mixto, no puramente burocrático",
+            "4": "El texto argumenta repetidamente que la validez de una decisión política depende de que se haya seguido el procedimiento. Tono predominantemente burocrático y neutral; si hay polémica, el foco está en si se respetaron las reglas, no en las personas",
+            "5": "El texto defiende activamente el debido proceso como valor supremo. Hay condena explícita de vías de hecho, decretos por fuera del trámite legislativo, o saltos de la legalidad. La voluntad política individual se subordina al marco institucional",
         },
         "examples_high": (
             "La Sala Plena de la Corte Constitucional declaró inexequible el artículo 4 "
@@ -355,14 +355,24 @@ CALIBRATION_RULES: list[str] = [
     "artículo está a favor o en contra de dicha postura. Si un texto critica "
     "fuertemente el populismo describiendo sus tácticas, el texto contiene lenguaje "
     "populista y debe puntuar en ese eje.",
-    # 5. Regla del contexto transversal colombiano
+    # 5. SUJETO GRAMATICAL ≠ CENTRALIDAD DEL EJE (aplica a TODOS los ejes)
+    "Que una entidad aparezca como sujeto gramatical (ej. 'el Congreso aprobó', "
+    "'el presidente decidió', 'el pueblo rechazó', 'el FMI recomienda') NO implica "
+    "score alto en su eje. El score alto requiere que el texto ARGUMENTE desde ese "
+    "marco, no solo que lo mencione descriptivamente. Una noticia que reporta "
+    "'la Corte declaró inexequible X' es informativa (score bajo en institucionalismo), "
+    "no institucionalista. Para que sea institucionalismo alto, el texto debe defender "
+    "que la Corte HIZO BIEN en seguir el procedimiento, o condenar a quienes "
+    "intentaron saltárselo. Lo mismo para personalismo, populismo, globalismo, etc.: "
+    "exaltación o defensa explícita > mención como sujeto.",
+    # 6. Regla del contexto transversal colombiano
     "Ten en cuenta el CONTEXTO COLOMBIANO: Temas como el conflicto armado, el proceso "
     "de paz, la política antidrogas o la restitución de tierras son transversales. Un "
     "solo artículo sobre estos temas puede activar simultáneamente progresismo "
     "(justicia transicional), institucionalismo (fallos de la JEP o cortes), "
     "conservadurismo (exigencia de seguridad y mano dura) y soberanismo (control "
     "territorial). Evalúa la presencia de cada retórica por separado.",
-    # 6. Restricción de formato
+    # 7. Restricción de formato
     "Responde SOLO con un objeto JSON válido, sin usar bloques de código Markdown "
     "(```json ... ```), sin explicaciones, sin preámbulos y sin comentarios adicionales.",
 ]

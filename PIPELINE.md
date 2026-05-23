@@ -1,52 +1,23 @@
 # Pipeline IdeoGraphCO
 
-## Orden
+Regresión multisalida: noticia → vector `[0,1]⁸` (8 ejes ideológicos) → radar chart.
 
-1. **Scraping** — descarga noticias de medios colombianos
-2. **Cleaning** — regex remueve CTAs, cookies, paywalls
-3. **Filtering** — LLM barato descarta basura, biografías, páginas estáticas
-4. **Labeling** — LLM caro etiqueta los 8 ejes (escala 1-5)
-5. **Gold set humano** — anotación manual de ~150 artículos hold-out (test)
-6. **Splits** — train/val pre-computados a disco, gold como test
-7. **Training / Benchmark** — ConfliBERT + 8 cabezas (Lightning + Hydra)
-8. **Inference** — predice 8 scores + radar chart
+## Etapas
 
-## Por qué filter va ANTES que label
+| # | Etapa | Comando | Output |
+|---|-------|---------|--------|
+| 1 | Scrape + clean + filter LLM | `python scripts/scraper.py` | `data/raw/articles.jsonl` |
+| 2 | Labeling silver (LLM, escala continua [0,1]) | `python scripts/label.py --input data/raw/articles.jsonl` | `data/interim/labeled_news.jsonl` |
+| 3 | Gold set (Excel para anotación humana) | `python scripts/prepare_gold_set.py` | `annotation/gold_set_v1.xlsx` |
+| 4 | Splits (test=gold, train/val=resto) | `python scripts/prepare_splits.py` | `data/processed/splits.json` |
+| 5 | Training de 1 modelo | `python -m src.training.train` | `logs/checkpoints/<alias>/best.ckpt` |
+| 5b | Benchmark de N encoders × M semillas | `python scripts/benchmark.py --seeds 42 43 44` | `reports/benchmark_report.md` |
+| 6 | Inferencia | `python -m src.inference.predict --text "..."` | radar HTML |
 
-Labeling cuesta ~4x más por llamada que filtering (`gemini-2.5-flash` vs `gemini-2.5-flash-lite`) y se necesitan ambas etapas. Filtrar primero evita pagar por etiquetar artículos que después se descartan.
+## Notas clave
 
-## Comandos
+- **No hay campo `is_political`** en el dataset: el filter LLM (etapa 1) ya descarta los no-políticos.
+- **Escala continua**: el silver da floats en `[0, 1]` (ej. `0.42`). El gold humano usa enteros 1-5 que se mapean a `{0, 0.25, 0.5, 0.75, 1}`.
+- **Escalado automático del filter**: si `gemini-2.5-flash-lite` da confidence < 0.7, re-llama a `gemini-2.5-flash`.
 
-```bash
-source .venv/bin/activate
-
-# 1. Scraping (~2-4 h, gratis)
-python scripts/scraper.py
-
-# 2. Cleaning regex (segundos)
-python scripts/clean.py
-
-# 3. Filtering basura con LLM (~25 min, ~COP 250)
-python scripts/filter_articles.py
-
-# 4. Labeling con escala 1-5 (~20 min, ~COP 1,000)
-python scripts/label.py
-
-# 5. Gold set humano (manual, ~6-10 h con el PDF de bitácora)
-python scripts/prepare_gold_set.py     # muestreo estratificado → CSV
-# (editar el CSV a mano con el PDF)
-python scripts/finalize_gold_set.py    # CSV → test_gold.jsonl
-
-# 6. Pre-computar splits train/val (segundos)
-python scripts/prepare_splits.py
-
-# 7a. Training de un modelo
-python -m src.training.train
-
-# 7b. Benchmark de 3 encoders × 3 semillas (~18-24 h en Mac)
-python scripts/benchmark.py --seeds 42 43 44
-python scripts/compare_models.py
-
-# 8. Inferencia
-python -m src.inference.predict --text "..."
-```
+Más detalle por etapa: [workflows-guide/](workflows-guide/).

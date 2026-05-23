@@ -47,7 +47,7 @@ def main() -> None:
         "--input",
         type=str,
         default=None,
-        help="Archivo de entrada (default: data/raw/news_clean.jsonl)",
+        help="Archivo de entrada (default: data/raw/articles.jsonl)",
     )
     parser.add_argument(
         "--output",

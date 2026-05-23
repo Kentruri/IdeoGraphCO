@@ -160,7 +160,7 @@ def label_news_file(
 
     Args:
         llm_client: Cliente de Google GenAI (google.genai.Client()).
-        input_path: JSONL de entrada (default: data/raw/news_clean.jsonl).
+        input_path: JSONL de entrada (default: data/raw/articles.jsonl).
         output_path: JSONL de salida (default: data/interim/labeled_news.jsonl).
         llm_model: Modelo de Gemini a usar.
         force: Si True, re-etiqueta todo desde cero.
@@ -171,7 +171,7 @@ def label_news_file(
         Path al archivo etiquetado.
     """
     if input_path is None:
-        input_path = RAW_DIR / "news_clean.jsonl"
+        input_path = RAW_DIR / "articles.jsonl"
     if output_path is None:
         output_path = INTERIM_DIR / "labeled_news.jsonl"
 

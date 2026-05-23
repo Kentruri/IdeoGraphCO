@@ -112,7 +112,9 @@ def main() -> None:
 
     if articles_sin_id > 0:
         logger.warning(
-            "%d artículos sin campo `id`. Corre scripts/add_ids.py primero.",
+            "%d artículos sin campo `id`. Esto debería pasarte solo con datos "
+            "de scrapes muy viejos; rescatae con `dvc pull` o re-scrapea con "
+            "el pipeline actual (que añade `id` desde el origen).",
             articles_sin_id,
         )
 
