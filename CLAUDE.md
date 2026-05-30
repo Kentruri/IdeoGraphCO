@@ -35,7 +35,7 @@ texto → ConfliBERT → [CLS] → 8 × MLP independientes (Sigmoid) → vector 
 
 ## Escalas y dataset
 
-- **JSONL etiquetado** (`data/interim/labeled_news.jsonl`): 8 floats en `[0, 1]`.
+- **JSONL etiquetado** (`data/silver/silver_set.jsonl`): 8 floats en `[0, 1]`.
   Sin campo `is_political`.
 - **Silver (LLM)**: scores continuos. El LLM da `0.42`, `0.07`, `0.83`, etc.
   Los 5 niveles del codebook (Ausente / Leve / Moderado / Marcado / Dominante)
@@ -48,7 +48,7 @@ texto → ConfliBERT → [CLS] → 8 × MLP independientes (Sigmoid) → vector 
 ```
 scraper.py (scrape+clean+filter LLM) → data/raw/articles.jsonl
         ↓
-label.py (LLM-as-a-Judge, escala continua) → data/interim/labeled_news.jsonl
+label.py (LLM-as-a-Judge, escala continua) → data/silver/silver_set.jsonl
         ↓
 prepare_gold_set.py (muestreo + Excel) → anotación humana
         ↓

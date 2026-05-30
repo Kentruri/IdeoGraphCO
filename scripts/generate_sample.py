@@ -1,6 +1,6 @@
 """Genera Excel de muestra con 200 artículos por ideología para el director.
 
-Lee data/interim/labeled_news.jsonl, selecciona top N artículos por cada eje
+Lee data/silver/silver_set.jsonl, selecciona top N artículos por cada eje
 ideológico y exporta a un Excel con 8 hojas (una por ideología).
 
 Uso:
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.core.paths import INTERIM_DIR, ROOT
+from src.core.paths import ROOT, SILVER_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -94,12 +94,12 @@ def main() -> None:
     parser.add_argument("--top", type=int, default=200,
                         help="Top N artículos por ideología (default: 200)")
     parser.add_argument("--input", type=str, default=None,
-                        help="JSONL etiquetado (default: data/interim/labeled_news.jsonl)")
+                        help="JSONL etiquetado (default: data/silver/silver_set.jsonl)")
     parser.add_argument("--output", type=str, default=None,
                         help="Archivo Excel de salida (default: muestra_ideologica.xlsx)")
     args = parser.parse_args()
 
-    input_path = Path(args.input) if args.input else INTERIM_DIR / "labeled_news.jsonl"
+    input_path = Path(args.input) if args.input else SILVER_DIR / "silver_set.jsonl"
     output_path = Path(args.output) if args.output else ROOT / "muestra_ideologica.xlsx"
 
     logger.info("Cargando artículos de %s", input_path)

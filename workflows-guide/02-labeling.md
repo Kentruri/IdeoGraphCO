@@ -27,7 +27,7 @@ python scripts/label.py --input data/raw/articles.jsonl
 
 ## Output
 
-`data/interim/labeled_news.jsonl` — una línea por artículo:
+`data/silver/silver_set.jsonl` — una línea por artículo:
 
 ```json
 {"id":"...","text":"...","source":"...",

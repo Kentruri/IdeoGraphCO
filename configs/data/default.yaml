@@ -1,5 +1,5 @@
 # Configuración del pipeline de datos
-data_path: "data/interim/labeled_news.jsonl"  # ruta al JSONL etiquetado (silver labels del LLM)
+data_path: "data/silver/silver_set.jsonl"  # silver labels del LLM (escala continua [0,1])
 model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
 max_length: 512          # tokens máximos por noticia (límite de BERT)
 

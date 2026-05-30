@@ -23,7 +23,7 @@ python scripts/prepare_splits.py
 
 ```json
 {
-  "source_file": "data/interim/labeled_news.jsonl",
+  "source_file": "data/silver/silver_set.jsonl",
   "total_samples": 1000,
   "gold_used": true,
   "train": [12, 47, 89, ...],
@@ -34,7 +34,7 @@ python scripts/prepare_splits.py
 
 ## Cuándo regenerar
 
-- Después de cualquier cambio en `labeled_news.jsonl` (re-etiquetado, scrape nuevo)
+- Después de cualquier cambio en `silver_set.jsonl` (re-etiquetado, scrape nuevo)
 - Después de actualizar `gold_set_v1_ids.json`
 
 ## Componente

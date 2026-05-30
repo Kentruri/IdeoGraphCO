@@ -12,7 +12,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from src.agents.silver.codebook import build_system_prompt
-from src.core.paths import INTERIM_DIR, RAW_DIR
+from src.core.paths import RAW_DIR, SILVER_DIR
 from src.core.ids import article_id
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ AXIS_NAMES: list[str] = [
     "soberanismo", "globalismo", "conservadurismo", "progresismo",
 ]
 
-CURSOR_PATH = INTERIM_DIR / ".label_cursor"
+CURSOR_PATH = SILVER_DIR / ".silver_cursor"
 
 
 def _read_cursor() -> int:
@@ -161,7 +161,7 @@ def label_news_file(
     Args:
         llm_client: Cliente de Google GenAI (google.genai.Client()).
         input_path: JSONL de entrada (default: data/raw/articles.jsonl).
-        output_path: JSONL de salida (default: data/interim/labeled_news.jsonl).
+        output_path: JSONL de salida (default: data/silver/silver_set.jsonl).
         llm_model: Modelo de Gemini a usar.
         force: Si True, re-etiqueta todo desde cero.
         max_articles: Límite de artículos a etiquetar (None = todos).
@@ -173,7 +173,7 @@ def label_news_file(
     if input_path is None:
         input_path = RAW_DIR / "articles.jsonl"
     if output_path is None:
-        output_path = INTERIM_DIR / "labeled_news.jsonl"
+        output_path = SILVER_DIR / "silver_set.jsonl"
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

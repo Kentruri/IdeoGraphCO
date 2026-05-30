@@ -5,7 +5,7 @@ mucho) ANTES de gastar horas en un benchmark.
 
 Uso:
     python scripts/analyze_distribution.py
-    python scripts/analyze_distribution.py --input data/interim/labeled_news.jsonl
+    python scripts/analyze_distribution.py --input data/silver/silver_set.jsonl
 """
 
 import argparse
@@ -26,7 +26,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Analiza distribución de scores por eje")
     parser.add_argument(
         "--input", type=str, default=None,
-        help="JSONL etiquetado (default: data/interim/labeled_news.jsonl)",
+        help="JSONL etiquetado (default: data/silver/silver_set.jsonl)",
     )
     parser.add_argument(
         "--thresholds", nargs="+", type=float, default=[0.3, 0.5, 0.7],
@@ -34,17 +34,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from src.core.paths import INTERIM_DIR
+    from src.core.paths import SILVER_DIR
 
-    input_path = Path(args.input) if args.input else INTERIM_DIR / "labeled_news.jsonl"
+    input_path = Path(args.input) if args.input else SILVER_DIR / "silver_set.jsonl"
     if not input_path.exists():
-        fallback = INTERIM_DIR / "labeled_news.jsonl"
-        if fallback.exists():
-            logger.warning("No existe %s, usando %s", input_path, fallback)
-            input_path = fallback
-        else:
-            logger.error("No existe ningún JSONL etiquetado.")
-            return
+        logger.error("No existe %s. Corre primero el labeling.", input_path)
+        return
 
     # Recolectar scores por eje
     scores: dict[str, list[float]] = {a: [] for a in AXES}

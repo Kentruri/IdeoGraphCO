@@ -5,7 +5,7 @@ Resumen del pipeline en [PIPELINE.md](../PIPELINE.md). Aquí, una página por et
 | # | Guía | Comando principal | Output |
 |---|------|-------------------|--------|
 | 1 | [Scraping](01-scraping.md) (scrape+clean+filter unificado) | `python scripts/scraper.py` | `data/raw/articles.jsonl` |
-| 2 | [Labeling silver](02-labeling.md) (LLM, escala continua) | `python scripts/label.py` | `data/interim/labeled_news.jsonl` |
+| 2 | [Labeling silver](02-labeling.md) (LLM, escala continua) | `python scripts/label.py` | `data/silver/silver_set.jsonl` |
 | 3 | [Sample review](03-sample-review.md) (opcional, validación calidad) | `python scripts/generate_sample.py` | `muestra_ideologica.xlsx` |
 | 4 | [Gold set](04-gold-set.md) (anotación humana) | `python scripts/prepare_gold_set.py` | `annotation/gold_set_v1.xlsx` |
 | 5 | [Splits](05-splits.md) (train/val/test, test=gold) | `python scripts/prepare_splits.py` | `data/processed/splits.json` |

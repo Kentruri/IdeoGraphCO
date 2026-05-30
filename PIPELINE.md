@@ -7,7 +7,7 @@ Regresión multisalida: noticia → vector `[0,1]⁸` (8 ejes ideológicos) → 
 | # | Etapa | Comando | Output |
 |---|-------|---------|--------|
 | 1 | Scrape + clean + filter LLM | `python scripts/scraper.py` | `data/raw/articles.jsonl` |
-| 2 | Labeling silver (LLM, escala continua [0,1]) | `python scripts/label.py --input data/raw/articles.jsonl` | `data/interim/labeled_news.jsonl` |
+| 2 | Labeling silver (LLM, escala continua [0,1]) | `python scripts/label.py --input data/raw/articles.jsonl` | `data/silver/silver_set.jsonl` |
 | 3 | Gold set (Excel para anotación humana) | `python scripts/prepare_gold_set.py` | `annotation/gold_set_v1.xlsx` |
 | 4 | Splits (test=gold, train/val=resto) | `python scripts/prepare_splits.py` | `data/processed/splits.json` |
 | 5 | Training de 1 modelo | `python -m src.training.train` | `logs/checkpoints/<alias>/best.ckpt` |

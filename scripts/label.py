@@ -53,7 +53,7 @@ def main() -> None:
         "--output",
         type=str,
         default=None,
-        help="Archivo de salida (default: data/interim/labeled_news.jsonl)",
+        help="Archivo de salida (default: data/silver/silver_set.jsonl)",
     )
     args = parser.parse_args()
 

@@ -33,7 +33,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Pre-computa splits train/val/test")
     parser.add_argument(
         "--input", type=str, default=None,
-        help="JSONL etiquetado (default: data/interim/labeled_news.jsonl)",
+        help="JSONL etiquetado (default: data/silver/silver_set.jsonl)",
     )
     parser.add_argument(
         "--output", type=str, default=None,
@@ -59,9 +59,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    from src.core.paths import INTERIM_DIR, PROCESSED_DIR, ROOT
+    from src.core.paths import PROCESSED_DIR, ROOT, SILVER_DIR
 
-    input_path = Path(args.input) if args.input else INTERIM_DIR / "labeled_news.jsonl"
+    input_path = Path(args.input) if args.input else SILVER_DIR / "silver_set.jsonl"
     if not input_path.exists():
         logger.error("No existe %s. Corre el labeling primero.", input_path)
         return
