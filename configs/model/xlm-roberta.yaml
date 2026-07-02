@@ -1,0 +1,14 @@
+# XLM-RoBERTa base — multilingual RoBERTa (Facebook AI).
+# Requerido por el anteproyecto (OE2). Modelo multilingüe entrenado en 100
+# idiomas; es la comparación "modelo multilingual grande" del benchmark.
+model_name: "FacebookAI/xlm-roberta-base"
+encoder_alias: "xlm-roberta"
+num_classes: 8
+
+learning_rate: 2e-5
+dropout: 0.1
+weight_decay: 0.01
+warmup_ratio: 0.1
+freeze_encoder_epochs: 0
+
+use_politicity_head: false

@@ -1,14 +1,15 @@
-# ConfliBERT-Spanish — pre-entrenado en política y conflicto en español
-# Hipótesis principal: el pre-entreno especializado mejora la captura de
-# matices políticos colombianos.
+# ConfliBERT-Spanish — pre-entrenado en política y conflicto en español.
+# Hipótesis principal del benchmark: el pre-entreno especializado mejora la
+# captura de matices políticos colombianos frente a modelos generalistas.
 model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
 encoder_alias: "confliberto"
-num_axes: 8
+num_classes: 8
 
-# Hiperparámetros (mismos para los 3 modelos del benchmark para comparabilidad)
+# Hiperparámetros (idénticos entre encoders del benchmark para comparabilidad)
 learning_rate: 2e-5
 dropout: 0.1
 weight_decay: 0.01
 warmup_ratio: 0.1
 freeze_encoder_epochs: 0
+
 use_politicity_head: false

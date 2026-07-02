@@ -2,53 +2,78 @@
 
 ## Proyecto
 
-Sistema de **regresión multisalida** que cuantifica intensidad ideológica en
-noticias colombianas en 8 dimensiones simultáneas. Trabajo de grado universitario.
+**Clasificador multiclase probabilístico** de ideología política en noticias
+colombianas. Trabajo de grado universitario.
 
-En lugar de clasificar izquierda/derecha, genera una "huella digital
-ideológica" como vector en `[0, 1]⁸` representable en radar chart.
+Cada artículo se asigna a **una** de 8 clases ideológicas (single-label,
+mutuamente excluyentes). El modelo devuelve una distribución de probabilidades
+sobre las 8 clases; la salida se visualiza como **mapa de calor** (no radar).
 
-## Los 8 ejes (4 pares opuestos)
+> Diseño previo: era regresión multisalida sobre 8 ejes en `[0,1]⁸`. Se
+> migró a clasificador multiclase por requisito del anteproyecto aprobado.
+> Ver `docs/preguntas-director.md` para decisiones pendientes con el
+> director (cabeza binaria de politicidad, XLNet en español, formato del
+> silver, etc.).
 
-| Eje | Opuesto |
-|-----|---------|
+## Las 8 clases ideológicas (4 pares opuestos)
+
+| Clase | Opuesto |
+|-------|---------|
 | Personalismo | Institucionalismo |
 | Populismo | Doctrinarismo |
 | Soberanismo | Globalismo |
 | Conservadurismo | Progresismo |
 
-Definiciones, marcadores y ejemplos en
-[src/agents/silver/codebook.py](src/agents/silver/codebook.py).
+Definiciones y marcadores en
+[src/agents/silver/codebook.py](src/agents/silver/codebook.py). Los pares
+opuestos están declarados en `src.core.schema.OPPOSITE_PAIRS` y se usan
+en el análisis de errores del OE3.
 
 ## Arquitectura del modelo
 
 ```
-texto → ConfliBERT → [CLS] → 8 × MLP independientes (Sigmoid) → vector [0,1]⁸
+texto largo → K chunks de 512 tokens (sliding_window, stride=384)
+                    ↓
+              Encoder (BETO / ConfliBERT / XLM-RoBERTa / XLNet)
+                    ↓
+              K embeddings [CLS] — uno por chunk
+                    ↓
+              V_doc = (1/K) · Σ V_chunk_i    (agregación mean-pool con máscara)
+                    ↓
+              Dropout → Linear(H, 8) → Softmax (implícito en CE loss)
+                    ↓
+              P(clase | doc) sobre 8 ideologías
 ```
 
-- **Encoder**: ConfliBERT-Spanish (`eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1`)
-- **Cabezas**: 8 MLPs independientes (`Linear→ReLU→Dropout→Linear→Sigmoid`)
-- **Loss**: `MSE(pred, target)` sobre los 8 ejes
-- **Métricas**: MSE y R² por eje (`torchmetrics`)
-- **Sin cabeza de politicidad**: el dataset es 100% político por construcción
-  (filtrado aguas arriba por el LLM filter del scraper)
+- **Loss**: Categorical Cross-Entropy.
+- **Métricas** (`torchmetrics`, macro): Precision, Recall, F1, Accuracy,
+  Confusion Matrix. `f1_macro` es la métrica principal del OE3.
+- **Encoders del benchmark** (OE2):
+  `dccuchile/bert-base-spanish-wwm-cased` (BETO),
+  `eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1` (ConfliBERT),
+  `FacebookAI/xlm-roberta-base` (XLM-RoBERTa),
+  `microsoft/mdeberta-v3-base` (placeholder de XLNet — TBD).
+- **Cabeza binaria de politicidad**: deshabilitada por defecto. Ver TBD en el
+  docstring de `src/training/models/ideoclassifier.py` y
+  `docs/preguntas-director.md` tema 1.
 
 ## Escalas y dataset
 
-- **JSONL etiquetado** (`data/silver/silver_set.jsonl`): 8 floats en `[0, 1]`.
-  Sin campo `is_political`.
-- **Silver (LLM)**: scores continuos. El LLM da `0.42`, `0.07`, `0.83`, etc.
-  Los 5 niveles del codebook (Ausente / Leve / Moderado / Marcado / Dominante)
-  son solo referencias semánticas, no anclajes obligatorios.
-- **Gold (humano)**: enteros 1-5 en el Excel. Mapeo:
-  `1→0.00, 2→0.25, 3→0.50, 4→0.75, 5→1.00`.
+- **Formato nuevo (categórico)** — target del refactor:
+  `{"label": "populismo"}` o `{"label_idx": 2}` (single-label).
+- **Formato legacy (silver continuo actual)** — 544 artículos en
+  `data/silver/silver_set.jsonl` con 8 floats en `[0, 1]` (herencia del
+  diseño previo de regresión). El dataset convierte con `argmax` al vuelo
+  vía `resolve_label_idx()` hasta re-etiquetar (ver tema 5 de las preguntas).
+- **Gold (humano)**: enteros 1-5 por eje en el Excel de anotación. Se
+  convierten con `argmax` al índice de clase (tema 3 de las preguntas).
 
 ## Pipeline de datos
 
 ```
 scraper.py (scrape+clean+filter LLM) → data/raw/articles.jsonl
         ↓
-label.py (LLM-as-a-Judge, escala continua) → data/silver/silver_set.jsonl
+label.py (LLM-as-a-Judge) → data/silver/silver_set.jsonl
         ↓
 prepare_gold_set.py (muestreo + Excel) → anotación humana
         ↓
@@ -56,14 +81,14 @@ prepare_splits.py (test=gold, train/val=resto) → data/processed/splits.json
         ↓
 src.training.train → checkpoints
         ↓
-src.inference.predict → radar HTML
+src.inference.predictor → mapa de calor HTML
 ```
 
 ## Estructura del proyecto (monorepo)
 
 ```
 src/
-├── core/                  # ids, paths, AXIS_NAMES (fuente única)
+├── core/                  # ids, paths, IDEOLOGY_CLASSES (fuente única)
 ├── scraper/
 │   ├── sources.py         # 83 fuentes en 7 categorías
 │   ├── parser.py          # trafilatura + UA rotativo
@@ -77,17 +102,17 @@ src/
 │   ├── silver/            # LLM-as-a-Judge (judge.py, codebook.py)
 │   └── gold/              # (tooling de anotación humana)
 ├── training/
-│   ├── data/              # dataset + datamodule (Lightning)
-│   ├── models/            # IdeoVectModel
-│   ├── benchmark/         # registry de encoders
+│   ├── data/              # dataset (article-level) + datamodule + collate
+│   ├── models/            # IdeoClassifier
+│   ├── benchmark/         # registry de los 4 encoders del PDF
 │   └── train.py           # Hydra + Lightning Trainer
-└── inference/             # predictor + radar charts (Plotly)
+└── inference/             # predictor + heatmap (Plotly)
 
 scripts/                   # CLIs delgados (orquestan src/)
 configs/                   # Hydra (model, data, trainer)
 annotation/                # gold set v1 (xlsx + jsonl + ids.json)
 data/                      # versionado con DVC
-docs/                      # guías técnicas (data-versioning, etc.)
+docs/                      # guías técnicas + preguntas al director
 workflows-guide/           # guía paso a paso por etapa
 ```
 
@@ -101,18 +126,18 @@ workflows-guide/           # guía paso a paso por etapa
 | Independiente | 19 |
 | Regional | 15 |
 | Institucional | 10 |
-| Judicial (★ nueva) | 6 |
+| Judicial | 6 |
 | Opinion (think tanks) | 10 |
 | Gremial | 8 |
 
 ## Stack técnico
 
 - **PyTorch Lightning + Hydra** — entrenamiento y configuración
-- **ConfliBERT-Spanish** — encoder pre-entrenado en conflicto/política
+- **transformers** — 4 encoders del OE2 (BETO / ConfliBERT / XLM-R / XLNet-TBD)
 - **Trafilatura** — extracción robusta de artículos
 - **Gemini API** — silver labels + filter LLM (con escalado auto)
-- **torchmetrics** — MSE y R² por eje
-- **Plotly** — radar charts interactivos
+- **torchmetrics** — Precision / Recall / F1 Macro / Accuracy / Confusion Matrix
+- **Plotly** — heatmap interactivo
 - **DVC** — versionado de `data/`
 
 ## Convenciones de código

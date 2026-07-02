@@ -1,15 +1,37 @@
-"""Dataset para noticias colombianas con etiquetas ideológicas de 8 ejes.
+"""Dataset article-level para el clasificador multiclase de ideología.
 
-Soporta dos estrategias para manejar textos más largos que `max_length`:
+Cada item del dataset es UN ARTÍCULO completo con sus K chunks pre-tokenizados.
+La agregación de chunks (V_doc = mean V_chunk_i) sucede en el modelo,
+no aquí.
 
-1. **truncate** (default, rápido): trunca el texto al primer `max_length` tokens.
-   Pierde contenido pero es estándar para BERT.
+Formato de un ítem retornado por `__getitem__`:
 
-2. **sliding_window** (recomendado para artículos largos): divide cada artículo
-   en chunks superpuestos. Cada chunk se trata como una muestra independiente
-   con los mismos labels del artículo original. La agregación de predicciones
-   por artículo se hace en el modelo (en validation/test).
+    {
+        "input_ids":       LongTensor  (K, L)    K chunks de L tokens
+        "attention_mask":  LongTensor  (K, L)
+        "chunk_mask":      LongTensor  (K,)      1 = chunk real (siempre 1
+                                                 en este nivel; el padding a
+                                                 K_max del batch lo hace el
+                                                 collate_fn)
+        "label":           LongTensor  scalar    índice de clase 0..7
+        "article_idx":     LongTensor  scalar    índice global del artículo
+    }
+
+Estrategias de chunking:
+
+- **truncate**: 1 chunk = primeros L tokens del artículo (baseline rápido).
+- **sliding_window**: K chunks con overlap; K se capa a `max_chunks`.
+
+Formato aceptado en el JSONL de labels:
+
+- **Nuevo (categórico, TBD post-decisión del director)**:
+      {"label": "populismo"}  o  {"label_idx": 2}
+- **Legacy (silver continuo actual)**:
+      {"personalismo": 0.42, "populismo": 0.83, ...}
+  → se resuelve con argmax al vuelo (ver docs/preguntas-director.md tema 5).
 """
+
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -18,52 +40,78 @@ import torch
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 
-from src.core.schema import AXIS_NAMES
+from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES, NUM_CLASSES
+
+
+def resolve_label_idx(article: dict) -> int:
+    """Devuelve el índice de clase 0..7 leyendo el artículo en cualquier formato.
+
+    Prioridad:
+    1. `label_idx` (entero, formato nativo del clasificador).
+    2. `label` (string, mapea con CLASS_TO_IDX).
+    3. 8 scores continuos → argmax (legacy silver).
+    """
+    if "label_idx" in article:
+        idx = int(article["label_idx"])
+        if not 0 <= idx < NUM_CLASSES:
+            raise ValueError(
+                f"label_idx fuera de rango: {idx} (esperado 0..{NUM_CLASSES - 1})"
+            )
+        return idx
+
+    label = article.get("label")
+    if isinstance(label, str):
+        if label not in CLASS_TO_IDX:
+            raise ValueError(
+                f"label desconocido: {label!r}. Válidos: {list(CLASS_TO_IDX)}"
+            )
+        return CLASS_TO_IDX[label]
+
+    nested = article.get("labels", {})
+    scores = [
+        float(article.get(cls, nested.get(cls, 0.0)))
+        for cls in IDEOLOGY_CLASSES
+    ]
+    if all(s == 0.0 for s in scores):
+        raise ValueError(
+            f"Artículo sin etiquetas ideológicas resolubles: keys={list(article)[:8]}"
+        )
+    return max(range(NUM_CLASSES), key=lambda i: scores[i])
 
 
 class IdeoGraphDataset(Dataset):
-    """Carga noticias etiquetadas y las tokeniza con soporte de sliding window.
-
-    Cada elemento del dataset es un *chunk* (no un artículo). Para `truncate`,
-    cada artículo produce 1 chunk. Para `sliding_window`, un artículo largo
-    produce N chunks que comparten los mismos labels.
-
-    Formato esperado del JSONL:
-        {
-            "id": "abc123...",
-            "text": "El presidente anunció...",
-            "personalismo": 0.72,
-            "institucionalismo": 0.15,
-            ...
-        }
-    """
+    """Dataset article-level para el clasificador."""
 
     def __init__(
         self,
         data_path: Path,
         model_name: str = "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1",
-        max_length: int = 512,
-        chunking_strategy: str = "truncate",  # "truncate" | "sliding_window"
         chunk_size: int = 512,
-        chunk_stride: int = 384,  # 25% de overlap
+        chunk_stride: int = 384,
+        max_chunks: int = 8,
+        chunking_strategy: str = "sliding_window",  # "truncate" | "sliding_window"
     ) -> None:
+        if chunking_strategy not in ("truncate", "sliding_window"):
+            raise ValueError(
+                f"chunking_strategy desconocida: {chunking_strategy!r}."
+            )
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.max_length = max_length
-        self.chunking_strategy = chunking_strategy
         self.chunk_size = chunk_size
         self.chunk_stride = chunk_stride
+        self.max_chunks = max_chunks
+        self.chunking_strategy = chunking_strategy
 
-        # Carga de artículos (lista cruda del JSONL)
+        self._cls_id = self.tokenizer.cls_token_id
+        self._sep_id = self.tokenizer.sep_token_id
+        self._pad_id = self.tokenizer.pad_token_id
+
         self.articles: list[dict] = self._load(data_path)
-
-        # Pre-computar chunks: cada entrada es (article_idx, token_ids o None)
-        # Si "tokens" es None → estrategia truncate (se tokeniza on-the-fly)
-        # Si "tokens" tiene valor → estrategia sliding_window (ya pre-tokenizado)
-        self.chunks: list[dict] = self._compute_chunks()
+        self._chunks_per_article: list[list[list[int]]] = [
+            self._chunk_article(a["text"]) for a in self.articles
+        ]
 
     @staticmethod
     def _load(path: Path) -> list[dict]:
-        """Lee un archivo JSONL."""
         samples: list[dict] = []
         with open(path, encoding="utf-8") as f:
             for line in f:
@@ -72,138 +120,106 @@ class IdeoGraphDataset(Dataset):
                     samples.append(json.loads(line))
         return samples
 
-    def _compute_chunks(self) -> list[dict]:
-        """Pre-computa los chunks según la estrategia de chunking."""
+    def _chunk_article(self, text: str) -> list[list[int]]:
+        """Devuelve lista de listas de token IDs (sin CLS/SEP; se añaden luego)."""
+        content_length = self.chunk_size - 2  # espacio para [CLS] y [SEP]
+        full_ids: list[int] = self.tokenizer(
+            text, add_special_tokens=False, truncation=False,
+        )["input_ids"]
+
+        if not full_ids:
+            return [[]]
+
         if self.chunking_strategy == "truncate":
-            # 1 chunk por artículo. Tokenización lazy en __getitem__.
-            return [
-                {"article_idx": i, "chunk_idx_in_article": 0, "tokens": None}
-                for i in range(len(self.articles))
-            ]
+            return [full_ids[:content_length]]
 
-        if self.chunking_strategy == "sliding_window":
-            return self._sliding_window_chunks()
-
-        raise ValueError(
-            f"chunking_strategy desconocida: {self.chunking_strategy}. "
-            "Usa 'truncate' o 'sliding_window'."
-        )
-
-    def _sliding_window_chunks(self) -> list[dict]:
-        """Genera chunks de longitud fija con overlap por cada artículo.
-
-        Pre-tokeniza todos los artículos (más rápido que tokenizar en cada
-        __getitem__), guarda los ids y los slicea según chunk_size + stride.
-        """
-        chunks: list[dict] = []
-        # Tokens especiales del tokenizer (CLS, SEP) reservan 2 posiciones
-        # → el contenido real por chunk es chunk_size - 2
-        content_length = self.chunk_size - 2
-
-        cls_id = self.tokenizer.cls_token_id
-        sep_id = self.tokenizer.sep_token_id
-
-        for art_idx, article in enumerate(self.articles):
-            # Tokenizar sin truncation ni padding, solo IDs sin especiales
-            full_ids = self.tokenizer(
-                article["text"],
-                add_special_tokens=False,
-                truncation=False,
-            )["input_ids"]
-
-            # Si el artículo cabe entero, un solo chunk
-            if len(full_ids) <= content_length:
-                chunks.append({
-                    "article_idx": art_idx,
-                    "chunk_idx_in_article": 0,
-                    "tokens": full_ids,
-                })
-                continue
-
-            # Sliding window con stride
-            start = 0
-            chunk_idx = 0
-            while start < len(full_ids):
-                end = min(start + content_length, len(full_ids))
-                chunks.append({
-                    "article_idx": art_idx,
-                    "chunk_idx_in_article": chunk_idx,
-                    "tokens": full_ids[start:end],
-                })
-                chunk_idx += 1
-                if end == len(full_ids):
-                    break
-                start += self.chunk_stride
-
-        # Guardar IDs especiales para __getitem__
-        self._cls_id = cls_id
-        self._sep_id = sep_id
-        self._pad_id = self.tokenizer.pad_token_id
+        chunks: list[list[int]] = []
+        start = 0
+        while start < len(full_ids) and len(chunks) < self.max_chunks:
+            end = min(start + content_length, len(full_ids))
+            chunks.append(full_ids[start:end])
+            if end == len(full_ids):
+                break
+            start += self.chunk_stride
         return chunks
 
     def __len__(self) -> int:
-        return len(self.chunks)
+        return len(self.articles)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        chunk = self.chunks[idx]
-        article = self.articles[chunk["article_idx"]]
+        article = self.articles[idx]
+        chunks = self._chunks_per_article[idx]
 
-        if self.chunking_strategy == "truncate" or chunk["tokens"] is None:
-            # Tokenización on-the-fly con truncation y padding
-            encoding = self.tokenizer(
-                article["text"],
-                max_length=self.max_length,
-                padding="max_length",
-                truncation=True,
-                return_tensors="pt",
-            )
-            input_ids = encoding["input_ids"].squeeze(0)
-            attention_mask = encoding["attention_mask"].squeeze(0)
-        else:
-            # Sliding window: envolver tokens en [CLS] ... [SEP] y padear
-            content = chunk["tokens"]
-            ids = [self._cls_id] + content + [self._sep_id]
+        input_ids_list: list[list[int]] = []
+        attention_mask_list: list[list[int]] = []
+        for content in chunks:
+            ids = [self._cls_id] + list(content) + [self._sep_id]
             mask = [1] * len(ids)
-            # Padding al chunk_size
             pad_len = self.chunk_size - len(ids)
-            ids = ids + [self._pad_id] * pad_len
-            mask = mask + [0] * pad_len
-            input_ids = torch.tensor(ids[:self.chunk_size], dtype=torch.long)
-            attention_mask = torch.tensor(mask[:self.chunk_size], dtype=torch.long)
+            if pad_len > 0:
+                ids = ids + [self._pad_id] * pad_len
+                mask = mask + [0] * pad_len
+            else:
+                ids = ids[: self.chunk_size]
+                mask = mask[: self.chunk_size]
+            input_ids_list.append(ids)
+            attention_mask_list.append(mask)
 
-        # Etiquetas de los 8 ejes (en orden canónico).
-        # Soporta dos formatos: scores en root o anidados en "labels".
-        nested = article.get("labels", {})
-        labels = torch.tensor(
-            [
-                float(article.get(axis, nested.get(axis, 0.0)))
-                for axis in AXIS_NAMES
-            ],
-            dtype=torch.float32,
-        )
+        input_ids = torch.tensor(input_ids_list, dtype=torch.long)
+        attention_mask = torch.tensor(attention_mask_list, dtype=torch.long)
+        chunk_mask = torch.ones(len(chunks), dtype=torch.long)
 
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "labels": labels,
-            "article_idx": torch.tensor(chunk["article_idx"], dtype=torch.long),
+            "chunk_mask": chunk_mask,
+            "label": torch.tensor(resolve_label_idx(article), dtype=torch.long),
+            "article_idx": torch.tensor(idx, dtype=torch.long),
         }
 
-    # ------------------------------------------------------------------
-    # Helpers para DataModule
-    # ------------------------------------------------------------------
     @property
     def n_articles(self) -> int:
-        """Cantidad de artículos únicos (no de chunks)."""
         return len(self.articles)
 
-    def chunk_indices_for_articles(self, article_indices: list[int]) -> list[int]:
-        """Devuelve los índices de chunks que pertenecen a un conjunto de artículos.
 
-        Se usa en DataModule para mapear splits a-nivel-artículo → chunks.
-        """
-        article_set = set(article_indices)
-        return [
-            i for i, chunk in enumerate(self.chunks)
-            if chunk["article_idx"] in article_set
-        ]
+def collate_articles(batch: list[dict], pad_chunk_len: int) -> dict[str, torch.Tensor]:
+    """Apila artículos de longitud variable de chunks a un batch uniforme.
+
+    Argumentos:
+        batch: lista de items de IdeoGraphDataset.__getitem__.
+        pad_chunk_len: longitud L de cada chunk (Dataset.chunk_size).
+
+    Retorna:
+        {
+            "input_ids":      (B, K_max, L)
+            "attention_mask": (B, K_max, L)
+            "chunk_mask":     (B, K_max)
+            "labels":         (B,)
+            "article_idx":    (B,)
+        }
+    """
+    B = len(batch)
+    K_max = max(item["chunk_mask"].shape[0] for item in batch)
+    L = pad_chunk_len
+
+    input_ids = torch.zeros((B, K_max, L), dtype=torch.long)
+    attention_mask = torch.zeros((B, K_max, L), dtype=torch.long)
+    chunk_mask = torch.zeros((B, K_max), dtype=torch.long)
+    labels = torch.empty(B, dtype=torch.long)
+    article_idx = torch.empty(B, dtype=torch.long)
+
+    for i, item in enumerate(batch):
+        k = item["chunk_mask"].shape[0]
+        input_ids[i, :k, :] = item["input_ids"]
+        attention_mask[i, :k, :] = item["attention_mask"]
+        chunk_mask[i, :k] = item["chunk_mask"]
+        labels[i] = item["label"]
+        article_idx[i] = item["article_idx"]
+
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "chunk_mask": chunk_mask,
+        "labels": labels,
+        "article_idx": article_idx,
+    }

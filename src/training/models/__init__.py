@@ -1,5 +1,5 @@
 """Modelos de IdeoGraphCO."""
 
-from src.training.models.ideovect_model import IdeoVectModel
+from src.training.models.ideoclassifier import IdeoClassifier
 
-__all__ = ["IdeoVectModel"]
+__all__ = ["IdeoClassifier"]

@@ -1,9 +1,9 @@
-from src.inference.predictor import IdeoVectPredictor
-from src.inference.radar import compare_radar_charts, create_radar_chart, save_chart
+from src.inference.heatmap import create_heatmap, create_heatmap_grid, save_chart
+from src.inference.predictor import IdeoClassifierPredictor
 
 __all__ = [
-    "IdeoVectPredictor",
-    "create_radar_chart",
-    "compare_radar_charts",
+    "IdeoClassifierPredictor",
+    "create_heatmap",
+    "create_heatmap_grid",
     "save_chart",
 ]

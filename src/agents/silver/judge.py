@@ -14,6 +14,7 @@ from tqdm import tqdm
 from src.agents.silver.codebook import build_system_prompt
 from src.core.paths import RAW_DIR, SILVER_DIR
 from src.core.ids import article_id
+from src.core.schema import IDEOLOGY_CLASSES
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +22,12 @@ logger = logging.getLogger(__name__)
 for _noisy in ("google_genai", "google_genai.types", "httpx", "httpcore"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
-AXIS_NAMES: list[str] = [
-    "personalismo", "institucionalismo", "populismo", "doctrinarismo",
-    "soberanismo", "globalismo", "conservadurismo", "progresismo",
-]
+# TBD (esperando decisión del director sobre re-labeling categórico):
+# Este judge produce SILVER CONTINUO ([0,1] por eje). Post-decisión de
+# director, si se aprueba re-labelar single-label, este archivo pasa a
+# legacy y se crea judge_categorical.py con schema y prompt distintos.
+# Ver docs/preguntas-director.md tema 5.
+AXIS_NAMES: list[str] = IDEOLOGY_CLASSES
 
 CURSOR_PATH = SILVER_DIR / ".silver_cursor"
 

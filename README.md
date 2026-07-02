@@ -1,8 +1,9 @@
 # IdeoGraphCO
 
-Sistema de regresión multisalida para cuantificar intensidad ideológica en
-noticias colombianas en 8 dimensiones simultáneas. Salida: vector en `[0,1]⁸`
-representable como radar chart.
+Clasificador multiclase probabilístico de ideología política en noticias
+colombianas. Cada artículo se asigna a **1 de 8 clases** (single-label);
+la salida es una distribución de probabilidades sobre las 8 ideologías,
+visualizable como mapa de calor.
 
 ## Setup
 
@@ -25,26 +26,33 @@ python scripts/label.py --input data/raw/articles.jsonl
 # 3. Splits + training
 python scripts/prepare_splits.py
 python -m src.training.train
+
+# 4. Benchmark de los 4 encoders del anteproyecto
+python scripts/benchmark.py --seeds 42 43 44
+python scripts/compare_models.py
 ```
 
 Pipeline completo en [PIPELINE.md](PIPELINE.md). Detalle por etapa en
-[workflows-guide/](workflows-guide/).
+[workflows-guide/](workflows-guide/). Decisiones pendientes con el director
+en [docs/preguntas-director.md](docs/preguntas-director.md).
 
 ## Estructura
 
 ```
 src/
-├── core/          # ids, paths, schema (AXIS_NAMES único)
+├── core/          # ids, paths, schema (IDEOLOGY_CLASSES único)
 ├── scraper/       # scraping + cleaning + filter LLM
 ├── agents/silver/ # LLM-as-a-Judge
 ├── training/      # data, models, train, benchmark
-└── inference/     # predict + radar charts
+└── inference/     # predictor + heatmap
 ```
 
 ## Stack
 
 - PyTorch Lightning + Hydra
-- ConfliBERT-Spanish (encoder)
+- 4 encoders del OE2: BETO / ConfliBERT-Spanish / XLM-RoBERTa / XLNet (TBD)
 - Trafilatura (scraping)
 - Gemini API (silver labels, filter)
+- torchmetrics (F1 Macro, Confusion Matrix, ...)
+- Plotly (heatmap)
 - DVC (versionado de datos)

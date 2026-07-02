@@ -1,15 +1,22 @@
-# Configuración por defecto del modelo IdeoVect (alias: confliberto).
-# Para benchmark con múltiples encoders, usar configs/model/{confliberto,maria,beto}.yaml
+# Configuración por defecto del modelo IdeoClassifier (alias: confliberto).
+# Para benchmark con múltiples encoders, usar
+# configs/model/{confliberto,beto,xlm-roberta,xlnet}.yaml
 model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
 encoder_alias: "confliberto"
-num_axes: 8
+num_classes: 8
 
 # Hiperparámetros de entrenamiento
 learning_rate: 2e-5
 dropout: 0.1
 weight_decay: 0.01
-warmup_ratio: 0.1            # 10% de pasos para warmup lineal
-freeze_encoder_epochs: 0     # épocas con encoder congelado antes de fine-tuning
+warmup_ratio: 0.1
+freeze_encoder_epochs: 0
 
-# Nota: los nombres de los 8 ejes son la fuente de verdad en
-# src/core/schema.py:AXIS_NAMES (no se duplica aquí).
+# TBD (esperando decisión del director — ver docs/preguntas-director.md tema 1):
+# Activa la cabeza binaria de politicidad DENTRO del modelo neural.
+# Si false (recomendado), el filter LLM del scraper cumple esa función
+# aguas arriba, fuera del modelo.
+use_politicity_head: false
+
+# Nota: los nombres de las 8 clases son la fuente de verdad en
+# src/core/schema.py:IDEOLOGY_CLASSES (no se duplican aquí).

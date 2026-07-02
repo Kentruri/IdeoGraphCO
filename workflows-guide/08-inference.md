@@ -1,35 +1,48 @@
 # 8 — Inferencia
 
-Toma un texto, carga el checkpoint del modelo y devuelve los 8 scores +
-opcionalmente un radar chart HTML.
-
-## Comando
-
-```bash
-python -m src.inference.predict --text "El presidente anunció ..."
-python -m src.inference.predict --file articulo.txt --radar salida.html
-```
+Toma un texto, carga el checkpoint del clasificador y devuelve la ideología
+predicha + distribución de probabilidades sobre las 8 clases, visualizable
+como mapa de calor HTML.
 
 ## API (uso desde código)
 
 ```python
-from src.inference.predictor import IdeoVectPredictor
-from src.inference.radar import create_radar_chart, save_chart
+from src.inference.predictor import IdeoClassifierPredictor
+from src.inference.heatmap import create_heatmap, save_chart
 
-predictor = IdeoVectPredictor("logs/checkpoints/confliberto__seed42/best.ckpt")
+predictor = IdeoClassifierPredictor("logs/checkpoints/confliberto__seed42/best.ckpt")
 result = predictor.predict("Texto de la noticia...")
-# {"axes": {"personalismo": 72.4, "institucionalismo": 15.3, ...}}
+# {
+#   "predicted_class": "populismo",
+#   "confidence": 42.7,
+#   "probabilities": {
+#       "personalismo": 12.3, "institucionalismo": 8.4,
+#       "populismo": 42.7, ...
+#   }
+# }
 
-chart = create_radar_chart(result["axes"], title="Análisis")
-save_chart(chart, "radar.html")
+chart = create_heatmap(result["probabilities"], title="Análisis")
+save_chart(chart, "heatmap.html")
+```
+
+## Comparación de varios documentos (heatmap grid)
+
+```python
+from src.inference.heatmap import create_heatmap_grid
+
+results = [predictor.predict(t)["probabilities"] for t in texts]
+grid = create_heatmap_grid(results, row_labels=medios, title="Comparación de medios")
+save_chart(grid, "comparacion.html")
 ```
 
 ## Output
 
-- `result["axes"]` — dict con 8 valores en `[0, 100]` (escalado para visualización)
-- Radar HTML interactivo (Plotly) si se solicita
+- `result["predicted_class"]` — nombre de la clase ganadora (string).
+- `result["confidence"]` — probabilidad de la clase ganadora en `[0, 100]`.
+- `result["probabilities"]` — dict con las 8 probabilidades (%). Suman ~100.
+- Heatmap HTML interactivo (Plotly) si se solicita.
 
 ## Componentes
 
-- [src/inference/predictor.py](../src/inference/predictor.py) — carga checkpoint + forward
-- [src/inference/radar.py](../src/inference/radar.py) — chart con Plotly
+- [src/inference/predictor.py](../src/inference/predictor.py) — carga checkpoint + forward + chunking
+- [src/inference/heatmap.py](../src/inference/heatmap.py) — mapa de calor Plotly
