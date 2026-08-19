@@ -1,5 +1,10 @@
 """Dataset article-level para el clasificador multiclase de ideología.
 
+Las etiquetas se validan EAGER al cargar (no lazy en __getitem__): un
+artículo con etiqueta inválida aborta la carga con su `id` en el mensaje,
+en vez de crashear a mitad de entrenamiento. Los empates de argmax en el
+formato legacy se reportan con un warning agregado.
+
 Cada item del dataset es UN ARTÍCULO completo con sus K chunks pre-tokenizados.
 La agregación de chunks (V_doc = mean V_chunk_i) sucede en el modelo,
 no aquí.
@@ -79,6 +84,22 @@ def resolve_label_idx(article: dict) -> int:
     return max(range(NUM_CLASSES), key=lambda i: scores[i])
 
 
+def legacy_argmax_is_tie(article: dict) -> bool:
+    """True si el artículo legacy (8 floats) tiene empate en el argmax.
+
+    Con etiqueta explícita (`label`/`label_idx`) nunca hay empate.
+    """
+    if "label_idx" in article or isinstance(article.get("label"), str):
+        return False
+    nested = article.get("labels", {})
+    scores = [
+        float(article.get(cls, nested.get(cls, 0.0)))
+        for cls in IDEOLOGY_CLASSES
+    ]
+    top = max(scores)
+    return scores.count(top) > 1
+
+
 class IdeoGraphDataset(Dataset):
     """Dataset article-level para el clasificador."""
 
@@ -112,12 +133,35 @@ class IdeoGraphDataset(Dataset):
 
     @staticmethod
     def _load(path: Path) -> list[dict]:
+        import logging
+
+        logger = logging.getLogger(__name__)
         samples: list[dict] = []
+        ties = 0
         with open(path, encoding="utf-8") as f:
-            for line in f:
+            for line_num, line in enumerate(f, start=1):
                 line = line.strip()
-                if line:
-                    samples.append(json.loads(line))
+                if not line:
+                    continue
+                article = json.loads(line)
+                # Validación eager: falla al CARGAR (con contexto), no a
+                # mitad de entrenamiento.
+                try:
+                    resolve_label_idx(article)
+                except ValueError as e:
+                    raise ValueError(
+                        f"{path}:{line_num} (id={article.get('id', '?')}): {e}"
+                    ) from e
+                if legacy_argmax_is_tie(article):
+                    ties += 1
+                samples.append(article)
+        if ties:
+            logger.warning(
+                "%d/%d artículos legacy con EMPATE en el argmax (la clase se "
+                "resuelve por orden de índice — sesgo sistemático). "
+                "Re-etiquetar categórico con scripts/label.py --force lo elimina.",
+                ties, len(samples),
+            )
         return samples
 
     def _chunk_article(self, text: str) -> list[list[int]]:

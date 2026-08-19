@@ -74,7 +74,20 @@ class IdeoGraphDataModule(L.LightningDataModule):
         self.test_ds: torch.utils.data.Dataset | None = None
 
     def setup(self, stage: str | None = None) -> None:
-        """Carga el dataset completo y lo divide en train/val/test."""
+        """Carga el dataset completo y lo divide en train/val/test.
+
+        Con `splits_path` configurado, el archivo DEBE existir: antes, un
+        clon sin `dvc pull` caía silenciosamente a random_split, mezclaba
+        el gold en train y cada semilla del benchmark obtenía un test
+        distinto — sin ningún error visible.
+        """
+        if self.splits_path and not self.splits_path.exists():
+            raise FileNotFoundError(
+                f"No existe {self.splits_path}. Corre `python scripts/prepare_splits.py` "
+                "(¿o falta `dvc pull`?). Para un split aleatorio de desarrollo, "
+                "pasa explícitamente data.splits_path=null."
+            )
+
         full_dataset = IdeoGraphDataset(
             data_path=self.data_path,
             model_name=self.model_name,
@@ -84,13 +97,27 @@ class IdeoGraphDataModule(L.LightningDataModule):
             chunking_strategy=self.chunking_strategy,
         )
 
-        if self.splits_path and self.splits_path.exists():
+        if self.splits_path:
             with open(self.splits_path, encoding="utf-8") as f:
                 splits = json.load(f)
 
-            self.train_ds = Subset(full_dataset, splits["train"])
-            self.val_ds = Subset(full_dataset, splits["val"])
-            self.test_ds = Subset(full_dataset, splits["test"])
+            if splits.get("id_based"):
+                indices = self._resolve_id_splits(full_dataset, splits)
+            else:
+                # Formato legacy por índices posicionales: solo es seguro si
+                # el dataset no cambió desde que se computaron los splits.
+                declared = splits.get("total_samples")
+                if declared is not None and declared != len(full_dataset):
+                    raise ValueError(
+                        f"splits.json fue computado sobre {declared} artículos pero "
+                        f"el dataset tiene {len(full_dataset)}: los índices ya no "
+                        "corresponden. Re-corre scripts/prepare_splits.py."
+                    )
+                indices = {k: splits[k] for k in ("train", "val", "test")}
+
+            self.train_ds = Subset(full_dataset, indices["train"])
+            self.val_ds = Subset(full_dataset, indices["val"])
+            self.test_ds = Subset(full_dataset, indices["test"])
         else:
             total = len(full_dataset)
             test_size = int(total * self.test_split)
@@ -103,6 +130,27 @@ class IdeoGraphDataModule(L.LightningDataModule):
                 [train_size, val_size, test_size],
                 generator=generator,
             )
+
+    @staticmethod
+    def _resolve_id_splits(
+        dataset: IdeoGraphDataset, splits: dict,
+    ) -> dict[str, list[int]]:
+        """Mapea IDs de artículo → índices del dataset, validando cobertura."""
+        id_to_index = {
+            article.get("id"): i for i, article in enumerate(dataset.articles)
+        }
+        resolved: dict[str, list[int]] = {}
+        for split_name in ("train", "val", "test"):
+            ids = splits[split_name]
+            missing = [aid for aid in ids if aid not in id_to_index]
+            if missing:
+                raise ValueError(
+                    f"{len(missing)} IDs del split '{split_name}' no están en el "
+                    f"dataset (ej: {missing[:3]}). El dataset y splits.json están "
+                    "desincronizados — re-corre scripts/prepare_splits.py."
+                )
+            resolved[split_name] = [id_to_index[aid] for aid in ids]
+        return resolved
 
     def _build_generator(self) -> torch.Generator:
         g = torch.Generator()

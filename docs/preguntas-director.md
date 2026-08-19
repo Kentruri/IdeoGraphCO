@@ -11,6 +11,24 @@ justificación correspondiente.
 
 ---
 
+## Estado de las consultas (actualizado ago 2026)
+
+La versión vigente del anteproyecto ("Cuantificación de sesgo ideológico…
+y síntesis de noticias por triangulación de fuentes") resolvió varias de
+estas preguntas por sí misma; el código ya refleja esas resoluciones:
+
+| # | Tema | Estado |
+|---|------|--------|
+| 1 | Cabeza binaria de politicidad | **Pendiente de aval** — implementada la Opción B (filter LLM aguas arriba; `use_politicity_head=false`) |
+| 2 | Composición del dataset | Sigue a la pregunta 1 (hoy: 100% político) |
+| 3 | Formato del Gold Set | **RESUELTO por el anteproyecto** — se implementó la Opción C (escalas 1-5 + `clase_dominante` explícita, doble anotación con solape y α; ver `workflows-guide/04-gold-set.md`) |
+| 4 | XLNet sin versión en español | **Pendiente de aval** — configurado mDeBERTa como placeholder (Opción C) |
+| 5 | Silver: argmax vs re-etiquetar | **RESUELTO por el anteproyecto** — Opción B: el judge ya pide la clase dominante (`scripts/label.py --force` re-etiqueta los 544) |
+| 6 | Parámetros de chunking | **Implementados** (512/384/8, promedio simple) — validar en el aval |
+| 7 | Métricas adicionales | Base implementada (por clase + confusión + errores entre opuestos en `scripts/final_eval.py`); Kappa/MCC opcionales |
+
+---
+
 ## 1. Clasificador binario de politicidad (crítico)
 
 **Lo que dice el PDF (Fase 3, OE2 P2.2):**
@@ -197,8 +215,10 @@ categórico (~COP 3,600)?
 - **Matthews Correlation Coefficient (MCC)** — robusto ante desbalance de
   clases.
 - **Análisis de "% de errores que caen en la clase opuesta"** — aprovecha
-  el diseño de 4 pares del codebook (personalismo↔institucionalismo,
-  populismo↔doctrinarismo, soberanismo↔globalismo, conservadurismo↔progresismo).
+  el diseño de 4 pares del codebook (populismo↔institucionalismo,
+  personalismo↔doctrinarismo, soberanismo↔globalismo, conservadurismo↔progresismo;
+  emparejamiento corregido en ago-2026 para coincidir con los 4 ejes teóricos
+  del anteproyecto §5.3, alineados con V-Party).
   Un error entre opuestos es más grave que un error entre ejes ortogonales.
 
 **Pregunta al director:** ¿Aprueba incluir estas métricas adicionales o

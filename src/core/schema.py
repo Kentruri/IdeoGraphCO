@@ -5,7 +5,7 @@ training, inference) para evitar duplicación y desincronización.
 
 Design note: el proyecto es un CLASIFICADOR MULTICLASE SINGLE-LABEL con
 8 clases mutuamente excluyentes (una ideología dominante por artículo). Las
-"opuestas" (personalismo ↔ institucionalismo, etc.) son clases distintas,
+"opuestas" (populismo ↔ institucionalismo, etc.) son clases distintas,
 no dos ejes de un mismo espacio bidimensional.
 """
 
@@ -30,11 +30,16 @@ NUM_CLASSES: int = len(IDEOLOGY_CLASSES)
 CLASS_TO_IDX: dict[str, int] = {name: i for i, name in enumerate(IDEOLOGY_CLASSES)}
 IDX_TO_CLASS: dict[int, str] = {i: name for i, name in enumerate(IDEOLOGY_CLASSES)}
 
-# Pares opuestos (para análisis de errores en OE3).
+# Pares opuestos (para análisis de errores en OE3), según los 4 ejes teóricos
+# del anteproyecto (§5.3, alineados con V-Party/V-Dem):
+#   - Gobernanza y discurso estamental: populismo (retórica anti-élite) frente
+#     al compromiso con el pluralismo institucional.
+#   - Estructura de liderazgo: personalismo (control individual del líder)
+#     frente al partido guiado por doctrina.
 # Un error entre opuestos es más grave que uno entre clases ortogonales.
 OPPOSITE_PAIRS: list[tuple[str, str]] = [
-    ("personalismo", "institucionalismo"),
-    ("populismo", "doctrinarismo"),
+    ("populismo", "institucionalismo"),
+    ("personalismo", "doctrinarismo"),
     ("soberanismo", "globalismo"),
     ("conservadurismo", "progresismo"),
 ]

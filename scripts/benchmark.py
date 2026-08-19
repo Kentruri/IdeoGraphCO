@@ -38,7 +38,6 @@ import logging
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 from src.training.benchmark.registry import AVAILABLE_MODELS
 from src.core.paths import LOGS_DIR
@@ -74,6 +73,10 @@ def run_training(
         # no se sobreescriban entre corridas multi-seed
         f"+model.encoder_alias_override={run_key}",
         f"hydra.run.dir=logs/hydra/{run_key}",
+        # Protocolo del anteproyecto: la SELECCIÓN se hace en validación;
+        # el test/gold se evalúa UNA vez con el ganador (scripts/final_eval.py).
+        # Evaluar cada modelo × semilla contra el test lo contamina.
+        "+run_test=false",
     ]
     if extra_overrides:
         cmd.extend(extra_overrides)
@@ -207,6 +210,8 @@ def main() -> None:
     print()
     if not args.smoke_test:
         print("  Siguiente paso: python scripts/compare_models.py")
+        print("  (la comparación usa métricas de VALIDACIÓN; el test/gold se")
+        print("   evalúa una sola vez con el ganador: scripts/final_eval.py)")
     print("=" * 60)
     print()
 

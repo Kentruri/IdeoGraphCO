@@ -109,7 +109,7 @@ def main() -> None:
 
     # --- Conteo por categoría ---
     by_cat = Counter(d.get("category", "?") for d in decisions)
-    print(f"\n=== Por categoría ===")
+    print("\n=== Por categoría ===")
     for cat, c in by_cat.most_common():
         print(f"  {cat:25} {c:5d}  ({100*c/total:5.1f}%)")
 
@@ -118,7 +118,7 @@ def main() -> None:
     for d in decisions:
         if isinstance(d.get("confidence"), (int, float)):
             cat_confs[d.get("category", "?")].append(d["confidence"])
-    print(f"\n=== Confidence media por categoría ===")
+    print("\n=== Confidence media por categoría ===")
     for cat in sorted(cat_confs):
         cs = cat_confs[cat]
         print(f"  {cat:25} media={sum(cs)/len(cs):.3f}  "
@@ -144,19 +144,19 @@ def main() -> None:
             print(f"  conf={d['confidence']:.2f}  [{d.get('source','?'):15}] {d.get('reason','')[:70]}")
 
     # --- Veredicto sobre escalado ---
-    print(f"\n=== ¿Vale la pena un umbral de escalado? ===")
+    print("\n=== ¿Vale la pena un umbral de escalado? ===")
     if all_confs:
         pct_below_threshold = 100 * sum(1 for c in all_confs if c < threshold) / len(all_confs)
         print(f"  Casos con confidence < {threshold}: {pct_below_threshold:.1f}%")
         if pct_below_threshold >= 5:
-            print(f"  → SÍ. Hay suficientes casos dudosos para que un escalado")
-            print(f"    a modelo más caro (gemini-2.5-flash o pro) sea útil.")
+            print("  → SÍ. Hay suficientes casos dudosos para que un escalado")
+            print("    a modelo más caro (gemini-2.5-flash o pro) sea útil.")
         elif pct_below_threshold >= 1:
-            print(f"  → MARGINAL. Pocos casos dudosos, evalúa si el gasto extra")
-            print(f"    se justifica para tu volumen total.")
+            print("  → MARGINAL. Pocos casos dudosos, evalúa si el gasto extra")
+            print("    se justifica para tu volumen total.")
         else:
-            print(f"  → NO. El modelo está muy seguro casi siempre.")
-            print(f"    Un escalado no aportaría mucha calidad.")
+            print("  → NO. El modelo está muy seguro casi siempre.")
+            print("    Un escalado no aportaría mucha calidad.")
 
 
 if __name__ == "__main__":

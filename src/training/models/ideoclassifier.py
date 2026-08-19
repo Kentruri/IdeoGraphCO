@@ -182,8 +182,38 @@ class IdeoClassifier(L.LightningModule):
 
         # La matriz de confusión no se loguea a escalar; se puede recuperar en
         # callbacks/tests explícitos. Guardarla como atributo para acceso post-fit.
-        setattr(self, f"{prefix}_confmat_final", confmat.compute().detach().cpu())
+        confmat_final = confmat.compute().detach().cpu()
+        setattr(self, f"{prefix}_confmat_final", confmat_final)
+        # Métricas POR CLASE (P2.1 del anteproyecto), derivadas de la matriz
+        # de confusión: filas = clase real, columnas = predicha.
+        setattr(
+            self,
+            f"{prefix}_per_class_final",
+            self._per_class_from_confmat(confmat_final),
+        )
         confmat.reset()
+
+    @staticmethod
+    def _per_class_from_confmat(confmat: torch.Tensor) -> dict[str, dict[str, float]]:
+        """Precision/Recall/F1/support por clase desde la matriz de confusión."""
+        per_class: dict[str, dict[str, float]] = {}
+        for i, cls in enumerate(IDEOLOGY_CLASSES[: confmat.shape[0]]):
+            tp = confmat[i, i].item()
+            support = confmat[i, :].sum().item()
+            predicted = confmat[:, i].sum().item()
+            precision = tp / predicted if predicted > 0 else 0.0
+            recall = tp / support if support > 0 else 0.0
+            f1 = (
+                2 * precision * recall / (precision + recall)
+                if (precision + recall) > 0 else 0.0
+            )
+            per_class[cls] = {
+                "precision": round(precision, 4),
+                "recall": round(recall, 4),
+                "f1": round(f1, 4),
+                "support": int(support),
+            }
+        return per_class
 
     def validation_step(self, batch: dict, batch_idx: int) -> None:
         self._eval_step(batch, "val")

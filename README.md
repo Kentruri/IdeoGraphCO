@@ -17,19 +17,29 @@ cp .env.example .env   # añadir GEMINI_API_KEY
 ## Uso rápido
 
 ```bash
-# 1. Scrape + clean + filter (un solo comando)
+# 1. Scrape + clean + filter (un solo comando; --workers/--gdelt/--prefilter opcionales)
 python scripts/scraper.py
 
-# 2. Labeling silver con LLM
+# 2. Labeling silver categórico (clase dominante + 8 scores)
 python scripts/label.py --input data/raw/articles.jsonl
 
-# 3. Splits + training
-python scripts/prepare_splits.py
+# 3. Gold humano v2: libros por anotador → anotar → ingesta con Krippendorff α
+python scripts/prepare_gold_set.py --annotators kevin juan
+python scripts/ingest_gold.py --books annotation/gold_set_v2_kevin.xlsx \
+    annotation/gold_set_v2_juan.xlsx --audit-silver data/silver/silver_set.jsonl
+
+# 4. Dataset canónico + splits por ID (test = gold humano) + training
+python scripts/prepare_splits.py --gold-labeled annotation/gold_set_v2_labeled.jsonl
 python -m src.training.train
 
-# 4. Benchmark de los 4 encoders del anteproyecto
+# 5. Benchmark (selección en validación) + evaluación final en test (una vez)
 python scripts/benchmark.py --seeds 42 43 44
 python scripts/compare_models.py
+python scripts/final_eval.py --checkpoint logs/checkpoints/<ganador>/best.ckpt
+
+# 6. Servicio de inferencia (contrato de IdeoGraphCO-BE)
+IDEOGRAPH_CHECKPOINT=logs/checkpoints/<ganador>/best.ckpt \
+    uvicorn src.inference.api:app --port 8080
 ```
 
 Pipeline completo en [PIPELINE.md](PIPELINE.md). Detalle por etapa en

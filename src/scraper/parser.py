@@ -11,16 +11,18 @@ Usa trafilatura para extraer texto limpio (sin CTAs, menús, footers).
 import logging
 import random
 import re
+import threading
 import time
 from datetime import datetime, timezone
 
 import feedparser
 import trafilatura
+from trafilatura.settings import use_config
 from trafilatura.sitemaps import sitemap_search
 from tqdm import tqdm
 
 from src.scraper.cleaner import clean_article_text
-from src.scraper.config import get_random_user_agent
+from src.scraper.config import get_user_agent_for
 from src.scraper.db import (
     compute_content_hash,
     is_already_scraped,
@@ -30,6 +32,9 @@ from src.scraper.db import (
 from src.scraper.robots import is_url_allowed
 from src.core.ids import article_id
 
+# User-Agent identificable para requests de sitemaps (XML)
+_SITEMAP_UA = "IdeoGraphCO-Research/1.0 (trabajo de grado)"
+
 logger = logging.getLogger(__name__)
 
 # Silenciar warnings ruidosos de trafilatura/courlan (links externos descartados,
@@ -38,19 +43,30 @@ for noisy in ("courlan", "trafilatura", "htmldate", "trafilatura.metadata", "tra
     logging.getLogger(noisy).setLevel(logging.ERROR)
 
 # Config de trafilatura con timeout para no quedar colgado en sitios lentos.
-# El USER_AGENTS se rota en cada request vía `_set_random_user_agent()` antes
-# de cada fetch_url — la config sigue siendo global porque el pipeline es
-# secuencial; si en el futuro paralelizamos hay que pasar a configs por hilo.
-from trafilatura.settings import use_config
-
-_TRAFILATURA_CONFIG = use_config()
-_TRAFILATURA_CONFIG.set("DEFAULT", "DOWNLOAD_TIMEOUT", "15")
-_TRAFILATURA_CONFIG.set("DEFAULT", "EXTRACTION_TIMEOUT", "20")
+# THREAD-LOCAL: cada hilo del pipeline paralelo tiene su propia config (la
+# config global de trafilatura no es thread-safe y el UA se rota por request).
+_TLS = threading.local()
 
 
-def _set_random_user_agent() -> None:
-    """Rota el User-Agent del config global. Llamar antes de cada fetch_url."""
-    _TRAFILATURA_CONFIG.set("DEFAULT", "USER_AGENTS", get_random_user_agent())
+def _get_config():
+    config = getattr(_TLS, "config", None)
+    if config is None:
+        config = use_config()
+        config.set("DEFAULT", "DOWNLOAD_TIMEOUT", "15")
+        config.set("DEFAULT", "EXTRACTION_TIMEOUT", "20")
+        _TLS.config = config
+    return config
+
+
+def _set_user_agent(url: str):
+    """Fija el User-Agent del config del hilo. Llamar antes de cada fetch_url.
+
+    Rota entre navegadores salvo en los dominios que exigen un UA fijo
+    (ver `DOMAIN_USER_AGENTS` en config.py).
+    """
+    config = _get_config()
+    config.set("DEFAULT", "USER_AGENTS", get_user_agent_for(url))
+    return config
 
 # ---------------------------------------------------------------------------
 # Rate limiting con backoff exponencial
@@ -80,14 +96,15 @@ def extract_article(url: str, source: str, category: str) -> dict | None:
     """Descarga y extrae un artículo con Trafilatura.
 
     Cada llamada rota el User-Agent (lista en src/scraper/config.py) para
-    minimizar el riesgo de baneo por patrón uniforme.
+    minimizar el riesgo de baneo por patrón uniforme, salvo en los dominios
+    que exigen un UA fijo.
     """
     try:
-        # Rotar UA antes de cada request
-        _set_random_user_agent()
+        # Fijar UA antes de cada request (config por hilo)
+        config = _set_user_agent(url)
 
         # Timeout explícito de 15s para no quedar colgado en sitios lentos
-        downloaded = trafilatura.fetch_url(url, config=_TRAFILATURA_CONFIG)
+        downloaded = trafilatura.fetch_url(url, config=config)
         if downloaded is None:
             return None
 
@@ -114,14 +131,13 @@ def extract_article(url: str, source: str, category: str) -> dict | None:
         if len(text) < 400:
             return None
 
-        # Deduplicación por contenido
+        # Hash de contenido para dedup — la DECISIÓN de dedup y el marcado en
+        # la BD ahora son del caller (pipeline): antes se marcaba aquí, ANTES
+        # del filtro LLM y de escribir a disco, así que un crash o un fallo
+        # del filtro dejaba la URL "quemada" sin artículo persistido.
         content_hash = compute_content_hash(text)
-        if is_duplicate_content(content_hash):
-            logger.debug("Contenido duplicado: %s", url)
-            return None
 
         scraped_at = datetime.now(timezone.utc).isoformat()
-        mark_as_scraped(url, content_hash, source, category, scraped_at)
 
         title = metadata.title if metadata and metadata.title else ""
         date = metadata.date if metadata and metadata.date else None
@@ -136,6 +152,8 @@ def extract_article(url: str, source: str, category: str) -> dict | None:
             "url": url,
             "date": date,
             "scraped_at": scraped_at,
+            # Interno (el pipeline lo consume y lo remueve antes de persistir)
+            "content_hash": content_hash,
         }
     except TimeoutError as e:
         # Servidor lento o cuelga. No bloquear el resto del scrape.
@@ -219,10 +237,80 @@ def discover_urls_sitemap(
     return result
 
 
+def parse_news_sitemap_xml(xml_text: str) -> list[tuple[str, str]]:
+    """Parsea un news-sitemap y devuelve [(url, fecha_iso)] SIN ordenar.
+
+    Soporta `<lastmod>` estándar y `<news:publication_date>` (Google News).
+    Entradas sin fecha reciben cadena vacía (se ordenan al final).
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as e:
+        logger.warning("News-sitemap XML inválido: %s", str(e)[:100])
+        return []
+
+    def _local(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1]
+
+    entries: list[tuple[str, str]] = []
+    for url_el in root:
+        if _local(url_el.tag) != "url":
+            continue
+        loc, date = "", ""
+        for child in url_el.iter():
+            tag = _local(child.tag)
+            text = (child.text or "").strip()
+            if tag == "loc" and not loc:
+                loc = text
+            elif tag in ("lastmod", "publication_date") and text:
+                # publication_date (Google News) gana sobre lastmod
+                if tag == "publication_date" or not date:
+                    date = text
+        if loc:
+            entries.append((loc, date))
+    return entries
+
+
+def discover_urls_news_sitemap(sitemap_urls: list[str]) -> list[str]:
+    """Descubre URLs desde news-sitemaps, ordenadas por fecha DESC (frescura).
+
+    A diferencia del sitemap histórico (trafilatura, sin fechas, se baraja),
+    los news-sitemaps traen `<lastmod>`/`<news:publication_date>`: lo más
+    nuevo primero. Es la vía correcta de frescura para fuentes sin RSS.
+    """
+    import urllib.request
+
+    entries: list[tuple[str, str]] = []
+    for sitemap_url in sitemap_urls:
+        try:
+            request = urllib.request.Request(
+                sitemap_url, headers={"User-Agent": _SITEMAP_UA},
+            )
+            with urllib.request.urlopen(request, timeout=20) as response:
+                xml_text = response.read().decode("utf-8", errors="ignore")
+            entries.extend(parse_news_sitemap_xml(xml_text))
+        except Exception as e:
+            logger.warning("Error leyendo news-sitemap %s: %s", sitemap_url, str(e)[:100])
+
+    entries.sort(key=lambda pair: pair[1], reverse=True)
+    seen: set[str] = set()
+    urls: list[str] = []
+    for url, _date in entries:
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+    return urls
+
+
 def discover_urls_crawl(base_url: str) -> list[str]:
     """Fallback: descubre URLs crawleando la página principal."""
     try:
-        downloaded = trafilatura.fetch_url(base_url)
+        # Mismo UA/timeout que extract_article: sin config, el crawl fallaba
+        # con 403 justo en los dominios que exigen UA fijo.
+        config = _set_user_agent(base_url)
+        downloaded = trafilatura.fetch_url(base_url, config=config)
         if downloaded is None:
             return []
         # Extraer todos los links de la página
@@ -326,11 +414,23 @@ def scrape_source(
 
         data = extract_article(article_url, name, category)
         if data:
-            logger.info(
-                "  [%s] OK   %d chars — %s",
-                name, len(data["text"]), url_short,
-            )
-            articles.append(data)
+            # Dedup por contenido + marcado (extract_article ya no toca la BD)
+            content_hash = data.pop("content_hash")
+            if is_duplicate_content(content_hash):
+                logger.info("  [%s] DUP-CONTENIDO %s", name, url_short)
+                mark_as_scraped(
+                    article_url, content_hash, name, category, data["scraped_at"],
+                )
+                skipped += 1
+            else:
+                mark_as_scraped(
+                    article_url, content_hash, name, category, data["scraped_at"],
+                )
+                logger.info(
+                    "  [%s] OK   %d chars — %s",
+                    name, len(data["text"]), url_short,
+                )
+                articles.append(data)
             consecutive_errors = 0
         else:
             logger.info("  [%s] FAIL %s", name, url_short)

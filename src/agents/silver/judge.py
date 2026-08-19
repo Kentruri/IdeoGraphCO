@@ -14,7 +14,7 @@ from tqdm import tqdm
 from src.agents.silver.codebook import build_system_prompt
 from src.core.paths import RAW_DIR, SILVER_DIR
 from src.core.ids import article_id
-from src.core.schema import IDEOLOGY_CLASSES
+from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +22,13 @@ logger = logging.getLogger(__name__)
 for _noisy in ("google_genai", "google_genai.types", "httpx", "httpcore"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
-# TBD (esperando decisión del director sobre re-labeling categórico):
-# Este judge produce SILVER CONTINUO ([0,1] por eje). Post-decisión de
-# director, si se aprueba re-labelar single-label, este archivo pasa a
-# legacy y se crea judge_categorical.py con schema y prompt distintos.
-# Ver docs/preguntas-director.md tema 5.
+# Formato CATEGÓRICO (metodología del anteproyecto, Fase 1 — Etiquetado
+# Asistido): el juez asigna la clase ideológica PREDOMINANTE ("dominant")
+# además de los 8 scores de intensidad en [0,1], que se conservan como
+# señal secundaria para auditoría y análisis. El registro de salida lleva
+# `label`/`label_idx` (los que consume el Dataset) + los 8 scores.
 AXIS_NAMES: list[str] = IDEOLOGY_CLASSES
+DOMINANT_KEY = "dominant"
 
 CURSOR_PATH = SILVER_DIR / ".silver_cursor"
 
@@ -75,6 +76,14 @@ def parse_response(response_text: str) -> dict | None:
         # Acotar a [0.0, 1.0] como float.
         data[axis] = max(0.0, min(1.0, float(data[axis])))
 
+    # Clase dominante: obligatoria y dentro de las 8 clases. Una respuesta
+    # sin dominante válida se descarta completa (mejor reintentar que
+    # inventar la etiqueta con argmax).
+    dominant = data.get(DOMINANT_KEY)
+    if dominant not in CLASS_TO_IDX:
+        logger.warning("Respuesta sin clase dominante válida: %r", dominant)
+        return None
+
     return data
 
 
@@ -88,16 +97,19 @@ def normalize_labels(data: dict) -> dict:
     return {axis: round(float(data[axis]), 4) for axis in AXIS_NAMES}
 
 
-# Schema JSON estructurado para Gemini: cada eje es un número en [0, 1].
-# Garantiza que el LLM no devuelva strings, booleanos ni valores fuera de
-# rango. Elimina la mayoría de la validación defensiva.
+# Schema JSON estructurado para Gemini: 8 ejes numéricos en [0, 1] + la
+# clase dominante como enum de las 8 clases. Garantiza tipos y rango,
+# eliminando la mayoría de la validación defensiva.
 _LABEL_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
-        axis: {"type": "number", "minimum": 0.0, "maximum": 1.0}
-        for axis in AXIS_NAMES
+        **{
+            axis: {"type": "number", "minimum": 0.0, "maximum": 1.0}
+            for axis in AXIS_NAMES
+        },
+        DOMINANT_KEY: {"type": "string", "enum": list(AXIS_NAMES)},
     },
-    "required": list(AXIS_NAMES),
+    "required": [*AXIS_NAMES, DOMINANT_KEY],
 }
 
 
@@ -260,6 +272,7 @@ def label_news_file(
                     continue
 
                 normalized = normalize_labels(result)
+                dominant = result[DOMINANT_KEY]
 
                 # id estable: si el input ya lo trae, lo preservamos; si no, lo
                 # derivamos del URL. Mismo URL → mismo id, siempre.
@@ -273,6 +286,12 @@ def label_news_file(
                     "category": raw.get("category", ""),
                     "url": raw.get("url", ""),
                     "date": raw.get("date"),
+                    # Etiqueta categórica (la que consume el Dataset)
+                    "label": dominant,
+                    "label_idx": CLASS_TO_IDX[dominant],
+                    "label_source": "silver-llm",
+                    "judge_model": llm_model,
+                    # Scores de intensidad (señal secundaria: auditoría/análisis)
                     **{axis: normalized[axis] for axis in AXIS_NAMES},
                 }
 

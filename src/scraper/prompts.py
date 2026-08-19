@@ -43,6 +43,26 @@ Clasificar el fragmento de texto en una de las cuatro categorías siguientes bas
 5. **Duda entre político y no-político**: prefiere **nonpolitical_article**.
 6. **Duda entre cualquier "_article" y garbage**: prefiere **garbage**.
 
+## EJEMPLOS DE CALIBRACIÓN (casos límite)
+
+1. "Capturan en Cali a tres hombres que asaltaban camiones de carga. El
+   Ministro de Defensa anunció un consejo de seguridad extraordinario y un
+   plan nacional contra la piratería terrestre."
+   → political_article (la crónica roja escala a respuesta de política
+   nacional: regla de oro 1)
+
+2. "Bancolombia reportó utilidades récord en el tercer trimestre impulsadas
+   por su cartera de consumo, según su informe a accionistas."
+   → nonpolitical_article (empresa privada sin implicación regulatoria ni
+   estatal; sería political si el foco fuera una disputa con la
+   Superintendencia o una reforma financiera)
+
+3. "María Fernanda López nació en Ibagué en 1975, estudió Derecho en la
+   Universidad Nacional y fue concejala antes de llegar al Senado. Es
+   reconocida por su disciplina de trabajo."
+   → biography_static (perfil de trayectoria personal, aunque la persona
+   sea política: regla de oro 4)
+
 ## FORMATO DE SALIDA (JSON ESTRICTO)
 
 {

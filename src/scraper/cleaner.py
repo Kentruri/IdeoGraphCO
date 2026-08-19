@@ -16,9 +16,9 @@ import unicodedata
 
 # Bloque completo: frase + línea vacía + título de otra noticia
 _CTA_BLOCK_PATTERN = re.compile(
-    r"(?:LEA TAMBIÉN|Lea también|Lea:|Le puede interesar|Le recomendamos|"
-    r"También le puede interesar|Puede leer:|Siga leyendo|"
-    r"Ver más:|Ver también:|Leer más:|"
+    r"(?:LEA TAMBIÉN|Lea también|Lea:|Lea aquí|Lea además|Le puede interesar|"
+    r"Le recomendamos|También le puede interesar|Puede leer:|Siga leyendo|"
+    r"Ver más:|Ver también:|Vea también|Vea aquí|Leer más:|Consulte aquí|"
     r"Más noticias|Noticias relacionadas|Siga el minuto a minuto:?)"
     r"\s*\n\s*\n?"
     r"[^\n]{0,200}\n?",
@@ -27,9 +27,9 @@ _CTA_BLOCK_PATTERN = re.compile(
 
 # Frases sueltas sin bloque (a veces aparecen inline)
 _CTA_INLINE_PATTERN = re.compile(
-    r"(?:LEA TAMBIÉN|Lea también|Lea:|Le puede interesar|Le recomendamos|"
-    r"También le puede interesar|Puede leer:|Siga leyendo|"
-    r"Ver más:|Ver también:|Leer más:):?\s*",
+    r"(?:LEA TAMBIÉN|Lea también|Lea:|Lea aquí|Lea además|Le puede interesar|"
+    r"Le recomendamos|También le puede interesar|Puede leer:|Siga leyendo|"
+    r"Ver más:|Ver también:|Vea también|Vea aquí|Leer más:|Consulte aquí):?\s*",
 )
 
 # ---------------------------------------------------------------------------
@@ -43,8 +43,39 @@ _SOCIAL_CTA_PATTERN = re.compile(
     r"|Queremos tener una comunicación más directa"
     r"|Únete a nuestro canal de WhatsApp"
     r"|Síguenos en WhatsApp"
+    r"|No olviden? suscribirse a nuestro canal de YouTube"
+    r"|[^\n]*aporte en nuestra Vaki"
     r")[^\n]*\n?",
     re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
+# Promos de marca detectadas EMPÍRICAMENTE en el corpus (auditoría ago-2026:
+# líneas presentes en ≥30% de los artículos de una fuente)
+# ---------------------------------------------------------------------------
+
+_BRAND_PROMO_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"Siga a EL PAÍS en Google Discover[^\n]*"     # elpaiscali (44/44)
+    r"|\*?\s*Pulzo\.com se escribe con Z[^\n]*"    # pulzo (13/14)
+    r"|Escuchar? este artículo"                    # elespectador (31/35)
+    r"|Audio generado con IA(?: de Google)?[^\n]*" # elespectador (31/35)
+    r"|Env[íi]e su antieditorial[^\n]*"            # elespectador (opinión)
+    r"|[^\n]{0,40}usa cookies necesarias[^\n]*"    # cookie banner variante
+    r")\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Encabezados de secciones/promos que aparecen como línea suelta en CUALQUIER
+# parte del texto (el _SECTION_CUTOFF solo actúa en la 2ª mitad)
+_SECTION_HEADER_LINES = re.compile(
+    r"^\s*(?:"
+    r"Temas recomendados:?|Noticias Destacadas|Lo más leído|Lo último|"
+    r"Tendencias|En portada|Te puede interesar|Más sobre este tema|"
+    r"Acerca del autor|\d+ comentarios|En vivo|Publicidad|"
+    r"Reproducir|Escuchar"
+    r")\s*$",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 # ---------------------------------------------------------------------------
@@ -183,9 +214,18 @@ _UI_SHORT_LINES = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# URLs residuales (trafilatura normalmente las quita, pero a veces quedan)
+# URLs residuales (trafilatura normalmente las quita, pero a veces quedan).
+# Incluye embeds SIN esquema (pic.twitter.com/xyz, t.co/abc) que la versión
+# anterior dejaba pasar — detectados en la auditoría del corpus.
 # ---------------------------------------------------------------------------
-_URL_PATTERN = re.compile(r"https?://\S+|www\.\S+")
+_URL_PATTERN = re.compile(
+    r"https?://\S+|www\.\S+"
+    r"|\b(?:pic\.twitter\.com|t\.co|bit\.ly|youtu\.be|goo\.gl|tinyurl\.com)/\S+"
+)
+
+# Emails en CUALQUIER posición (antes solo se removían al final del texto).
+# Un correo no aporta señal ideológica y sí arrastra CTAs de contacto.
+_EMAIL_ANYWHERE_PATTERN = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]{2,}")
 
 # ---------------------------------------------------------------------------
 # Handles de redes sociales al FINAL del texto
@@ -287,13 +327,16 @@ def clean_article_text(
     text = _PAYWALL_PATTERN.sub("", text)
     text = _UI_NOISE_PATTERN.sub("", text)
 
-    # 4. CTAs (bloques + inline + redes)
+    # 4. CTAs (bloques + inline + redes + promos de marca + encabezados)
     text = _CTA_BLOCK_PATTERN.sub("", text)
     text = _CTA_INLINE_PATTERN.sub("", text)
     text = _SOCIAL_CTA_PATTERN.sub("", text)
+    text = _BRAND_PROMO_PATTERN.sub("", text)
+    text = _SECTION_HEADER_LINES.sub("", text)
 
-    # 5. URLs residuales (trafilatura normalmente las quita pero a veces no)
+    # 5. URLs y emails residuales
     text = _URL_PATTERN.sub("", text)
+    text = _EMAIL_ANYWHERE_PATTERN.sub("", text)
 
     # 6. UI shorts (Compartir, Foto: pie corto, créditos de agencia)
     text = _UI_SHORT_LINES.sub("", text)

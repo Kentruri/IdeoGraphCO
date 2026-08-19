@@ -64,13 +64,24 @@ def load_all_metrics(benchmark_dir: Path) -> list[dict]:
     return results
 
 
-def extract_metric(test_metrics: dict, metric_name: str) -> float | None:
-    """Extrae una métrica del bloque test_metrics (prefiere test/ sobre val/)."""
+def extract_metric(metrics: dict, metric_name: str) -> float | None:
+    """Extrae una métrica de un bloque de métricas (prefiere test/ sobre val/)."""
     for prefix in ("test", "val"):
         key = f"{prefix}/{metric_name}"
-        if key in test_metrics:
-            return float(test_metrics[key])
+        if key in metrics:
+            return float(metrics[key])
     return None
+
+
+def _selection_metrics(run: dict) -> dict:
+    """Bloque de métricas para la comparación.
+
+    Protocolo del anteproyecto: la selección de modelo se hace con
+    VALIDACIÓN (val_metrics, corridas del benchmark con run_test=false).
+    Si un run viejo trae test_metrics y no val_metrics, se usa como
+    fallback para no romper reportes previos.
+    """
+    return run.get("val_metrics") or run.get("test_metrics", {})
 
 
 def _mean_std(values: list[float]) -> dict[str, float]:
@@ -95,23 +106,29 @@ def aggregate_by_encoder(runs: list[dict]) -> dict[str, dict]:
     for encoder, encoder_runs in grouped.items():
         seeds = sorted(r["_seed"] for r in encoder_runs)
         train_mins = [r.get("train_duration_seconds", 0) / 60 for r in encoder_runs]
+        # best_val_score = mejor val/f1_macro del checkpoint (el nombre viejo
+        # best_val_loss guardaba en realidad ese f1 — se lee como fallback)
         val_losses = [
-            r["best_val_loss"] for r in encoder_runs
-            if r.get("best_val_loss") is not None
+            r.get("best_val_score", r.get("best_val_loss"))
+            for r in encoder_runs
+            if r.get("best_val_score", r.get("best_val_loss")) is not None
         ]
 
         metrics_stats: dict[str, dict] = {}
         for metric in CLASSIFICATION_METRICS:
             vals = [
-                extract_metric(r.get("test_metrics", {}), metric)
+                extract_metric(_selection_metrics(r), metric)
                 for r in encoder_runs
             ]
             metrics_stats[metric] = _mean_std(vals)
 
-        # Matriz de confusión promedio entre semillas (misma dimensión NxN)
+        # Matriz de confusión promedio entre semillas (misma dimensión NxN).
+        # En el protocolo actual viene de VALIDACIÓN (el test se reserva
+        # para el ganador en scripts/final_eval.py).
         confmats = [
-            r.get("test_confusion_matrix") for r in encoder_runs
-            if r.get("test_confusion_matrix")
+            r.get("val_confusion_matrix") or r.get("test_confusion_matrix")
+            for r in encoder_runs
+            if r.get("val_confusion_matrix") or r.get("test_confusion_matrix")
         ]
         confmat_avg: list[list[float]] | None = None
         if confmats:
@@ -128,7 +145,7 @@ def aggregate_by_encoder(runs: list[dict]) -> dict[str, dict]:
             "n_seeds": len(encoder_runs),
             "seeds": seeds,
             "train_minutes": _mean_std(train_mins),
-            "best_val_loss": _mean_std(val_losses),
+            "best_val_score": _mean_std(val_losses),
             "metrics": metrics_stats,
             "confusion_matrix": confmat_avg,
             "model_name": encoder_runs[0].get("model_name", ""),
@@ -173,10 +190,10 @@ def build_markdown_report(
         lines.append("  - Reporta media ± std")
     lines.append("")
 
-    # Tabla resumen
-    lines.append("## Resultados globales\n")
-    lines.append("| Modelo | F1 Macro | Precision Macro | Recall Macro | Accuracy | Best val loss | Train (min) |")
-    lines.append("|--------|----------|-----------------|--------------|----------|---------------|-------------|")
+    # Tabla resumen (métricas de VALIDACIÓN — el test se reserva al ganador)
+    lines.append("## Resultados globales (validación)\n")
+    lines.append("| Modelo | F1 Macro | Precision Macro | Recall Macro | Accuracy | Best val F1 (ckpt) | Train (min) |")
+    lines.append("|--------|----------|-----------------|--------------|----------|--------------------|-------------|")
     for enc in encoders:
         agg = aggregated[enc]
         m = agg["metrics"]
@@ -186,11 +203,36 @@ def build_markdown_report(
             _fmt(m["precision_macro"]["mean"], m["precision_macro"]["std"], 3, show_std),
             _fmt(m["recall_macro"]["mean"], m["recall_macro"]["std"], 3, show_std),
             _fmt(m["accuracy"]["mean"], m["accuracy"]["std"], 3, show_std),
-            _fmt(agg["best_val_loss"]["mean"], agg["best_val_loss"]["std"], 4, show_std),
+            _fmt(agg["best_val_score"]["mean"], agg["best_val_score"]["std"], 4, show_std),
             _fmt(agg["train_minutes"]["mean"], agg["train_minutes"]["std"], 1, show_std),
         ]
         lines.append("| " + " | ".join(row) + " |")
     lines.append("")
+
+    # Tabla por semilla (análisis de varianza, P2.1)
+    if show_std:
+        lines.append("## F1 Macro por semilla (análisis de varianza)\n")
+        lines.append("| Modelo | " + " | ".join(
+            f"seed {s}" for s in aggregated[encoders[0]]["seeds"]
+        ) + " | media ± std |")
+        lines.append("|--------|" + "|".join(["----"] * (n_seeds + 1)) + "|")
+        by_encoder_seed: dict[str, dict[int, float | None]] = {}
+        for r in runs:
+            by_encoder_seed.setdefault(r["_encoder_canonical"], {})[r["_seed"]] = (
+                extract_metric(_selection_metrics(r), "f1_macro")
+            )
+        for enc in encoders:
+            seed_values = by_encoder_seed.get(enc, {})
+            cells = [
+                f"{seed_values[s]:.3f}" if seed_values.get(s) is not None else "—"
+                for s in aggregated[enc]["seeds"]
+            ]
+            m = aggregated[enc]["metrics"]["f1_macro"]
+            lines.append(
+                f"| **{enc}** | " + " | ".join(cells)
+                + f" | {_fmt(m['mean'], m['std'], 3, True)} |"
+            )
+        lines.append("")
 
     # Análisis: ganador global
     lines.append("## Ganador por métrica principal\n")
@@ -204,7 +246,7 @@ def build_markdown_report(
     lines.append("")
 
     # Confusion matrix por modelo (Markdown, valores redondeados)
-    lines.append("## Matriz de confusión (test set)\n")
+    lines.append("## Matriz de confusión (validación)\n")
     for enc in encoders:
         cm = aggregated[enc]["confusion_matrix"]
         if cm is None:
@@ -235,16 +277,16 @@ def write_csv(runs: list[dict], output_path: Path) -> None:
         encoder = r["_encoder_canonical"]
         seed = r["_seed"]
         train_min = r.get("train_duration_seconds", 0) / 60
-        test = r.get("test_metrics", {})
+        selection = _selection_metrics(r)
         for metric in CLASSIFICATION_METRICS:
             rows.append({
                 "encoder": encoder,
                 "seed": seed,
                 "model_name": r.get("model_name", ""),
                 "metric": metric,
-                "value": extract_metric(test, metric),
+                "value": extract_metric(selection, metric),
                 "train_minutes": round(train_min, 2),
-                "best_val_loss": r.get("best_val_loss"),
+                "best_val_score": r.get("best_val_score", r.get("best_val_loss")),
                 "git_commit": r.get("git_commit"),
             })
     if not rows:

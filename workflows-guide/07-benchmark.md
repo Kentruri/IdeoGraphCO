@@ -2,7 +2,10 @@
 
 Compara los 4 encoders del anteproyecto (OE2) × M semillas con los **mismos
 splits e hiperparámetros** para aislar el efecto del pre-entrenamiento.
-Métrica principal: F1 Macro sobre el test (gold humano).
+Métrica principal: **F1 Macro en VALIDACIÓN** — el test/gold se evalúa UNA
+sola vez, con el modelo ganador, vía `scripts/final_eval.py` (P3.1). Evaluar
+todos los modelos × semillas contra el test lo contaminaría por selección
+(cada corrida pasa `+run_test=false` automáticamente).
 
 ## Comando
 
@@ -13,8 +16,11 @@ python scripts/benchmark.py
 # Multi-seed (rigor estadístico)
 python scripts/benchmark.py --seeds 42 43 44
 
-# Reporte
+# Reporte (métricas de validación, por semilla y agregadas)
 python scripts/compare_models.py
+
+# Evaluación FINAL en test — SOLO el ganador, una vez (P3.1)
+python scripts/final_eval.py --checkpoint logs/checkpoints/<alias>__seed42/best.ckpt
 ```
 
 ## Flags útiles

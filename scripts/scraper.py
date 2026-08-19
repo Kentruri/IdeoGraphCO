@@ -118,6 +118,23 @@ def main() -> None:
         "--no-filter-log", action="store_true",
         help="Desactiva el log estructurado de decisiones del filter.",
     )
+    parser.add_argument(
+        "--workers", type=int, default=1,
+        help="Fuentes en paralelo (default: 1). 4-8 acelera ~5x la extracción; "
+             "el filter LLM sigue serializado por el rate limiter global.",
+    )
+    parser.add_argument(
+        "--prefilter", nargs="?", const="__default__", default=None,
+        help="Activa el prefilter local (casos obvios sin LLM). Sin valor usa "
+             "data/models/prefilter.joblib; acepta un path. "
+             "Entrénalo con scripts/train_prefilter.py.",
+    )
+    parser.add_argument(
+        "--gdelt", action="store_true",
+        help="Suma candidatos frescos de GDELT DOC 2.0 (gratis) para las "
+             "fuentes del catálogo; dominios desconocidos van a "
+             "logs/gdelt_unknown_domains.jsonl para curaduría.",
+    )
     args = parser.parse_args()
 
     # Configurar nivel de logs según --log-level
@@ -170,6 +187,29 @@ def main() -> None:
 
     escalate_model = None if args.no_escalate else args.escalate_model
 
+    # Prefilter local (cascada barata antes del LLM)
+    prefilter = None
+    if args.prefilter is not None:
+        from src.scraper.prefilter import DEFAULT_PREFILTER_PATH, try_load_prefilter
+
+        prefilter_path = (
+            DEFAULT_PREFILTER_PATH if args.prefilter == "__default__"
+            else Path(args.prefilter)
+        )
+        prefilter = try_load_prefilter(prefilter_path)
+
+    # Candidatos externos vía GDELT (una sola consulta por corrida)
+    extra_candidates_by_source = None
+    if args.gdelt:
+        from src.scraper.gdelt import fetch_candidates, map_candidates_to_sources
+
+        candidates = fetch_candidates()
+        extra_candidates_by_source = map_candidates_to_sources(
+            candidates,
+            selected_sources,
+            unknown_log_path=LOGS_DIR / "gdelt_unknown_domains.jsonl",
+        )
+
     scrape_pipeline(
         sources=selected_sources,
         output_path=output_path,
@@ -182,6 +222,9 @@ def main() -> None:
         filter_log_path=filter_log_path,
         escalate_model=escalate_model,
         escalate_threshold=args.escalate_threshold,
+        prefilter=prefilter,
+        workers=args.workers,
+        extra_candidates_by_source=extra_candidates_by_source,
     )
 
 

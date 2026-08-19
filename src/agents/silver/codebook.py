@@ -345,7 +345,7 @@ CALIBRATION_RULES: list[str] = [
     "Los 8 puntajes son ESTRICTAMENTE INDEPENDIENTES entre sí. No deben sumar 100 ni "
     "interactuar matemáticamente de ninguna forma.",
     # 3. No exclusión de opuestos
-    "Los ejes conceptualmente opuestos (Personalismo vs. Institucionalismo; Populismo "
+    "Los ejes conceptualmente opuestos (Populismo vs. Institucionalismo; Personalismo "
     "vs. Doctrinarismo; Soberanismo vs. Globalismo; Conservadurismo vs. Progresismo) "
     "NO son mutuamente excluyentes. Un texto puede tener scores altos en ambos si "
     "expone con fuerza ambas posturas (por ejemplo, un debate donde chocan dos "
@@ -378,16 +378,45 @@ CALIBRATION_RULES: list[str] = [
 ]
 
 # ---------------------------------------------------------------------------
+# Regla de la clase DOMINANTE (anteproyecto: clasificación categórica)
+# ---------------------------------------------------------------------------
+# La metodología aprobada (Fase 1, Etiquetado Asistido) exige asignar "la
+# clasificación categórica de la ideología política predominante a cada
+# artículo". Los 8 scores de intensidad se conservan como señal secundaria
+# (auditoría, análisis), pero la etiqueta de entrenamiento es la dominante.
+
+DOMINANT_RULES: str = """\
+Además de los 8 scores de intensidad, DEBES elegir exactamente UNA clase
+dominante: la ideología cuyo encuadre ESTRUCTURA el argumento del texto (el
+marco desde el que está narrada la noticia), no necesariamente la que más
+menciones tiene.
+
+Criterios de desempate (en orden):
+1. ¿Qué marco organiza el titular y el primer tercio del texto?
+2. ¿Qué retórica usa el texto en su propia voz (no en citas de terceros)?
+3. Si dos marcos empatan genuinamente, elige el que motivaría el titular.
+
+La dominante debe ser una de las 8 clases exactas (en minúsculas):
+personalismo, institucionalismo, populismo, doctrinarismo, soberanismo,
+globalismo, conservadurismo, progresismo."""
+
+
+# ---------------------------------------------------------------------------
 # Construcción del system prompt
 # ---------------------------------------------------------------------------
 
 
-def build_system_prompt(include_examples: bool = False) -> str:
+def build_system_prompt(
+    include_examples: bool = False,
+    with_dominant: bool = True,
+) -> str:
     """Construye el system prompt para el LLM-as-a-Judge.
 
     Args:
         include_examples: Si True, incluye los ejemplos de calibración
             (requiere que los [TBD] estén completados).
+        with_dominant: Si True (default, requerido por el anteproyecto),
+            el juez además elige la clase categórica dominante.
     """
     axes_section = ""
     for name, axis in AXIS_DEFINITIONS.items():
@@ -418,10 +447,22 @@ def build_system_prompt(include_examples: bool = False) -> str:
         if not rule.startswith("[TBD"):
             rules_section += f"{i}. {rule}\n"
 
+    dominant_section = ""
+    dominant_field = ""
+    dominant_task = ""
+    if with_dominant:
+        dominant_section = f"\n## CLASE DOMINANTE (etiqueta categórica)\n\n{DOMINANT_RULES}\n"
+        dominant_field = ',\n    "dominant": "personalismo"'
+        dominant_task = (
+            " y elegir la clase ideológica DOMINANTE del artículo (una sola, "
+            "campo \"dominant\")"
+        )
+
     return f"""Eres un analista político experto en el contexto colombiano. Tu tarea es
-evaluar una noticia colombiana POLÍTICA y asignar un puntaje de intensidad
-ideológica en 8 dimensiones. Las noticias no-políticas ya fueron descartadas
-aguas arriba por el filter LLM, así que asume que el texto SIEMPRE es político.
+evaluar una noticia colombiana POLÍTICA, asignar un puntaje de intensidad
+ideológica en 8 dimensiones{dominant_task}. Las noticias no-políticas ya fueron
+descartadas aguas arriba por el filter LLM, así que asume que el texto SIEMPRE
+es político.
 
 Devuelve un JSON con 8 campos numéricos (uno por eje) DIRECTAMENTE EN [0.0, 1.0].
 Usa cualquier valor en el rango (0.02, 0.34, 0.71, etc.); no te limites a
@@ -436,7 +477,7 @@ anclajes obligatorios:
 {axes_section}
 
 ## REGLAS DE CALIBRACIÓN
-{rules_section}
+{rules_section}{dominant_section}
 
 ## FORMATO DE RESPUESTA (solo JSON, nada más)
 
@@ -448,5 +489,5 @@ anclajes obligatorios:
     "soberanismo": 0.12,
     "globalismo": 0.03,
     "conservadurismo": 0.42,
-    "progresismo": 0.31
+    "progresismo": 0.31{dominant_field}
 }}}}"""

@@ -19,8 +19,8 @@ sobre las 8 clases; la salida se visualiza como **mapa de calor** (no radar).
 
 | Clase | Opuesto |
 |-------|---------|
-| Personalismo | Institucionalismo |
-| Populismo | Doctrinarismo |
+| Populismo | Institucionalismo |
+| Personalismo | Doctrinarismo |
 | Soberanismo | Globalismo |
 | Conservadurismo | Progresismo |
 
@@ -59,29 +59,38 @@ texto largo → K chunks de 512 tokens (sliding_window, stride=384)
 
 ## Escalas y dataset
 
-- **Formato nuevo (categórico)** — target del refactor:
-  `{"label": "populismo"}` o `{"label_idx": 2}` (single-label).
-- **Formato legacy (silver continuo actual)** — 544 artículos en
-  `data/silver/silver_set.jsonl` con 8 floats en `[0, 1]` (herencia del
-  diseño previo de regresión). El dataset convierte con `argmax` al vuelo
-  vía `resolve_label_idx()` hasta re-etiquetar (ver tema 5 de las preguntas).
-- **Gold (humano)**: enteros 1-5 por eje en el Excel de anotación. Se
-  convierten con `argmax` al índice de clase (tema 3 de las preguntas).
+- **Formato categórico (actual, metodología del anteproyecto)**: el judge
+  asigna la clase DOMINANTE → `{"label": "populismo", "label_idx": 2,
+  "label_source": "silver-llm"}` + los 8 scores de intensidad en `[0,1]`
+  como señal secundaria.
+- **Formato legacy (silver continuo)** — solo 8 floats por artículo. El
+  dataset lo convierte con `argmax` al vuelo vía `resolve_label_idx()`
+  (con warning por empates). Deprecado: re-etiquetar con
+  `python scripts/label.py --force`.
+- **Gold (humano) v2**: enteros 1-5 por eje + `clase_dominante` obligatoria
+  en el Excel. Doble anotación independiente con solape → Krippendorff
+  α ≥ 0.8 (`scripts/ingest_gold.py` + `src/agents/gold/agreement.py`);
+  discrepancias por consenso. Salida con `label_source: human*`.
 
 ## Pipeline de datos
 
 ```
 scraper.py (scrape+clean+filter LLM) → data/raw/articles.jsonl
         ↓
-label.py (LLM-as-a-Judge) → data/silver/silver_set.jsonl
+label.py (judge categórico: dominante + scores) → data/silver/silver_set.jsonl
         ↓
-prepare_gold_set.py (muestreo + Excel) → anotación humana
+prepare_gold_set.py (libros por anotador + solape) → anotación humana
         ↓
-prepare_splits.py (test=gold, train/val=resto) → data/processed/splits.json
+ingest_gold.py (α de Krippendorff + consenso) → annotation/gold_set_v2_labeled.jsonl
         ↓
-src.training.train → checkpoints
+prepare_splits.py (dataset canónico + splits por ID, test=gold HUMANO)
+        → data/processed/dataset.jsonl + splits.json
         ↓
-src.inference.predictor → mapa de calor HTML
+src.training.train / scripts/benchmark.py (selección en VALIDACIÓN)
+        ↓
+scripts/final_eval.py (test UNA vez, P3.1) → reports/evaluacion_final.md
+        ↓
+src.inference.predictor (heatmap) · src.inference.api (POST /classify para el BE)
 ```
 
 ## Estructura del proyecto (monorepo)

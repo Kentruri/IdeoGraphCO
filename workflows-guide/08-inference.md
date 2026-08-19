@@ -42,7 +42,25 @@ save_chart(grid, "comparacion.html")
 - `result["probabilities"]` — dict con las 8 probabilidades (%). Suman ~100.
 - Heatmap HTML interactivo (Plotly) si se solicita.
 
+## Servicio HTTP (para IdeoGraphCO-BE)
+
+```bash
+IDEOGRAPH_CHECKPOINT=logs/checkpoints/<alias>/best.ckpt \
+    uvicorn src.inference.api:app --host 0.0.0.0 --port 8080
+```
+
+| Endpoint | Contrato |
+|----------|----------|
+| `POST /classify` | `{"title","text"}` → `{"label","probabilities" (∈[0,1], suman 1),"model_version"}` |
+| `POST /delta` | `{"p","q","method"}` → `{"delta_d"}` — métrica ΔD (P5.2, Jensen-Shannon por defecto) |
+| `GET /health` | estado + versión del modelo |
+
+Nota: el predictor local devuelve porcentajes (0-100); la API convierte a
+probabilidades en `[0, 1]` (el formato del contrato con el backend).
+
 ## Componentes
 
 - [src/inference/predictor.py](../src/inference/predictor.py) — carga checkpoint + forward + chunking
 - [src/inference/heatmap.py](../src/inference/heatmap.py) — mapa de calor Plotly
+- [src/inference/api.py](../src/inference/api.py) — servicio FastAPI (`/classify`, `/delta`)
+- [src/inference/delta.py](../src/inference/delta.py) — métrica ΔD (P5.2)

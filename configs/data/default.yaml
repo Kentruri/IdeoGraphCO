@@ -1,10 +1,11 @@
 # Configuración del pipeline de datos (article-level, con chunking).
 #
-# El JSONL de entrada puede estar en dos formatos:
-#   - Nuevo (categórico): {"label": "populismo"}  o  {"label_idx": 2}
-#   - Legacy (silver continuo): 8 floats por eje → argmax al vuelo
-# Ver docs/preguntas-director.md tema 5.
-data_path: "data/silver/silver_set.jsonl"
+# data_path apunta al DATASET CANÓNICO que produce scripts/prepare_splits.py:
+# silver categórico + gold humano fusionado (label_source por registro).
+# Formatos de etiqueta aceptados:
+#   - Categórico: {"label": "populismo"}  o  {"label_idx": 2}
+#   - Legacy (silver continuo): 8 floats por eje → argmax al vuelo (deprecado)
+data_path: "data/processed/dataset.jsonl"
 model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
 
 # Chunking (V_doc = mean V_chunk_i)

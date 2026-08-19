@@ -37,7 +37,6 @@ httpcore==1.0.9
 httpx==0.28.1
 huggingface_hub==1.8.0
 hydra-core==1.3.2
--e git+ssh://git@github.com/Kentruri/IdeoGraphCO.git@1c0eb31f5da221053271656a6c236b44b796d572#egg=ideographco
 idna==3.11
 iniconfig==2.3.0
 ipykernel==7.2.0
@@ -128,3 +127,7 @@ w3lib==2.4.1
 wcwidth==0.6.0
 websockets==16.0
 yarl==1.23.0
+
+# Servicio de inferencia (src/inference/api.py)
+fastapi
+uvicorn

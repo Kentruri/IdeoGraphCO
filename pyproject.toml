@@ -1,7 +1,7 @@
 [project]
 name = "ideographco"
 version = "0.1.0"
-description = "Sistema de regresión multisalida para cuantificación de ideologías políticas en noticias colombianas"
+description = "Clasificador multiclase de ideología política (8 clases) en noticias colombianas"
 requires-python = ">=3.10"
 dependencies = [
     "torch>=2.0",
