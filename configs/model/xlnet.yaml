@@ -1,14 +1,15 @@
 # XLNet — requerido por el anteproyecto (OE2).
 #
-# ⚠️ TBD — No existe versión oficial de XLNet en español. Ver
-# docs/preguntas-director.md tema 4. Opciones:
-#   A) xlnet-base-cased (inglés, cross-lingual — probablemente subóptimo)
-#   B) flax-community/xlnet-base-spanish (comunitario, no oficial)
-#   C) Reemplazar por mDeBERTa: microsoft/mdeberta-v3-base
+# Decisión (ago-2026): opción A — el XLNet original en inglés. No existe
+# versión oficial en español y se mantiene el modelo comprometido en el
+# anteproyecto; su bajo desempeño esperado sobre texto en español es un
+# hallazgo del benchmark, no un error de configuración.
 #
-# Placeholder actual (opción C, recomendada por el equipo). Reemplazar
-# tras la decisión del director.
-model_name: "microsoft/mdeberta-v3-base"
+# Nota técnica: XLNet no usa max_position_embeddings fijo como BERT (atención
+# relativa), y su tokenizer es SentencePiece. El pipeline de chunking funciona
+# igual (512 tokens por bloque), pero el vocabulario es inglés: el texto en
+# español se fragmentará en más subtokens.
+model_name: "xlnet-base-cased"
 encoder_alias: "xlnet"  # nombre mantiene compatibilidad con el PDF
 num_classes: 8
 

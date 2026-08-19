@@ -64,6 +64,9 @@ class IdeoClassifier(L.LightningModule):
         # --- Encoder ---
         self.encoder = AutoModel.from_pretrained(model_name)
         hidden_size: int = self.encoder.config.hidden_size
+        # XLNet lleva <cls> al FINAL de la secuencia; el dataset arma los
+        # chunks en ese orden (misma detección, vía el nombre del tokenizer).
+        self._cls_at_end: bool = self.encoder.config.model_type == "xlnet"
 
         # --- Cabeza de clasificación ideológica (8-way) ---
         self.dropout = nn.Dropout(dropout)
@@ -80,6 +83,22 @@ class IdeoClassifier(L.LightningModule):
         self.test_metrics = self._build_metric_bundle("test")
         self.val_confmat = MulticlassConfusionMatrix(num_classes=num_classes)
         self.test_confmat = MulticlassConfusionMatrix(num_classes=num_classes)
+
+    def on_train_epoch_start(self) -> None:
+        """Congela el encoder las primeras `freeze_encoder_epochs` épocas.
+
+        El parámetro existía en todos los configs pero era un no-op
+        silencioso; ahora entrena solo la cabeza durante el warmup y
+        descongela después.
+        """
+        n_freeze = int(self.hparams.get("freeze_encoder_epochs", 0) or 0)
+        if n_freeze <= 0:
+            return
+        freeze = self.current_epoch < n_freeze
+        for param in self.encoder.parameters():
+            param.requires_grad = not freeze
+        if self.current_epoch == n_freeze:
+            self.print(f"Encoder descongelado en la época {self.current_epoch}")
 
     def _build_metric_bundle(self, prefix: str) -> nn.ModuleDict:
         """Bundle de métricas macro (Precision, Recall, F1) + Accuracy."""
@@ -119,10 +138,20 @@ class IdeoClassifier(L.LightningModule):
         flat_mask = attention_mask.reshape(B * K, L)
 
         # [CLS] embedding de cada chunk: (B*K, H)
-        cls_emb = self.encoder(
+        hidden = self.encoder(
             input_ids=flat_ids,
             attention_mask=flat_mask,
-        ).last_hidden_state[:, 0, :]
+        ).last_hidden_state
+        if self._cls_at_end:
+            # <cls> es el último token real (padding a la derecha): indexar
+            # por longitud real de cada chunk. Los chunks de relleno del
+            # collate (mask toda en 0) usan idx 0; su embedding se descarta
+            # después por chunk_mask.
+            idx = flat_mask.sum(dim=1).clamp(min=1) - 1
+            rows = torch.arange(hidden.size(0), device=hidden.device)
+            cls_emb = hidden[rows, idx, :]
+        else:
+            cls_emb = hidden[:, 0, :]
 
         # Reagrupar por artículo: (B, K, H)
         cls_emb = cls_emb.reshape(B, K, -1)

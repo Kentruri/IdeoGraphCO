@@ -12,14 +12,15 @@ otro encoder:
 # alias → identificador HuggingFace (informativo — la fuente de verdad es el
 # config Hydra en configs/model/<alias>.yaml).
 #
-# TBD (docs/preguntas-director.md tema 4): "xlnet" apunta a mDeBERTa porque
-# XLNet no tiene versión oficial en español. Ajustar tras la decisión del
-# director.
+# "xlnet" usa el XLNet original (inglés): no existe versión oficial en español
+# y se decidió (ago-2026) mantener el modelo comprometido en el anteproyecto.
+# Su desempeño esperado sobre texto en español es bajo; ese resultado es parte
+# del hallazgo del benchmark, no un error.
 MODEL_REGISTRY: dict[str, str] = {
     "confliberto": "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1",
     "beto": "dccuchile/bert-base-spanish-wwm-cased",
     "xlm-roberta": "FacebookAI/xlm-roberta-base",
-    "xlnet": "microsoft/mdeberta-v3-base",  # TBD, placeholder
+    "xlnet": "xlnet-base-cased",
 }
 
 AVAILABLE_MODELS: list[str] = list(MODEL_REGISTRY.keys())

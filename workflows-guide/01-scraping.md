@@ -38,7 +38,7 @@ python scripts/scraper.py
 
 - [scripts/scraper.py](../scripts/scraper.py) — CLI
 - [src/scraper/pipeline.py](../src/scraper/pipeline.py) — orquesta scrape→clean→filter
-- [src/scraper/sources.py](../src/scraper/sources.py) — 83 fuentes en 7 categorías
+- [src/scraper/sources.py](../src/scraper/sources.py) — 434 fuentes colombianas en 7 categorías
 - [src/scraper/prompts.py](../src/scraper/prompts.py) — `FILTER_SYSTEM_PROMPT` aislado
 - [scripts/analyze_filter_log.py](../scripts/analyze_filter_log.py) — análisis del log de decisiones
 - [scripts/train_prefilter.py](../scripts/train_prefilter.py) — entrena el prefilter local (teacher→student)

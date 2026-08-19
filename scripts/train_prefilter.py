@@ -26,6 +26,7 @@ def load_decisions(log_path: Path) -> tuple[list[str], list[int]]:
     texts: list[str] = []
     labels: list[int] = []
     seen_ids: set[str] = set()
+    seen_texts: set[int] = set()
     with open(log_path, encoding="utf-8") as f:
         for line in f:
             if not line.strip():
@@ -40,7 +41,14 @@ def load_decisions(log_path: Path) -> tuple[list[str], list[int]]:
             record_id = record.get("id") or record.get("url")
             if record_id in seen_ids:
                 continue
+            # Dedup por contenido: los cables republicados (Colprensa/EFE)
+            # entran con ids/URLs distintos; sin esto el mismo texto caía en
+            # train Y val e inflaba el AUC y la calibración de umbrales.
+            text_key = hash(text)
+            if text_key in seen_texts:
+                continue
             seen_ids.add(record_id)
+            seen_texts.add(text_key)
             texts.append(text)
             labels.append(1 if record.get("kept") else 0)
     return texts, labels
@@ -55,10 +63,14 @@ def calibrate_thresholds(
     probs = np.asarray(probs)
     labels = np.asarray(labels)
 
+    # Un umbral solo es válido con soporte estadístico real en validación:
+    # aceptar precisión=1.0 sobre 3 muestras producía umbrales de juguete.
+    min_support = max(20, int(0.02 * len(probs)))
+
     hi = 1.01  # imposible: nunca hace keep directo si no se encuentra umbral
     for threshold in np.arange(0.50, 1.00, 0.01):
         mask = probs >= threshold
-        if mask.sum() == 0:
+        if mask.sum() < min_support:
             break
         precision = labels[mask].mean()
         if precision >= keep_precision:
@@ -68,12 +80,29 @@ def calibrate_thresholds(
     lo = -0.01  # imposible: nunca dropea directo si no se encuentra umbral
     for threshold in np.arange(0.50, 0.00, -0.01):
         mask = probs <= threshold
-        if mask.sum() == 0:
+        if mask.sum() < min_support:
             break
         precision = (1 - labels[mask]).mean()
         if precision >= drop_precision:
             lo = float(threshold)
             break
+
+    # Garantizar zona gris mínima: con lo >= hi el LLM nunca volvería a
+    # consultarse, el prefilter decidiría TODO con la calibración de un val
+    # pequeño, y — peor — dejaría de generarse señal nueva para re-entrenarlo
+    # (los logs del LLM son su dataset). Se empujan ambos umbrales de forma
+    # simétrica para conservar keep y drop baratos en los extremos.
+    min_gray = 0.10
+    if hi <= 1.0 and lo >= 0.0 and hi - lo < min_gray:
+        mid = (lo + hi) / 2.0
+        lo = round(max(0.0, mid - min_gray / 2), 2)
+        hi = round(min(1.0, mid + min_gray / 2), 2)
+        import logging
+        logging.getLogger(__name__).warning(
+            "Zona gris insuficiente: umbrales ajustados a lo=%.2f hi=%.2f "
+            "para que el LLM siga resolviendo (y enseñando) los casos dudosos.",
+            lo, hi,
+        )
 
     return lo, hi
 
@@ -166,7 +195,11 @@ def main() -> None:
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"pipeline": pipeline, "lo": lo, "hi": hi, "meta": meta}, output_path)
+    # Escritura atómica: un Ctrl+C durante el dump dejaba un bundle corrupto
+    # que crasheaba el scraper al arrancar con --prefilter.
+    tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+    joblib.dump({"pipeline": pipeline, "lo": lo, "hi": hi, "meta": meta}, tmp_path)
+    tmp_path.replace(output_path)
 
     print()
     print("=" * 60)

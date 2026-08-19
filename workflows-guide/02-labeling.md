@@ -13,7 +13,9 @@ python scripts/label.py --input data/raw/articles.jsonl
 
 ## Flags útiles
 
-- `--max-articles 5 --force` — prueba corta sobre los primeros 5
+- `--max-articles 5 --output data/silver/prueba.jsonl --force` — prueba corta
+  sobre los primeros 5. **Siempre con `--output` propio**: `--force` abre la
+  salida en modo escritura y sin él la prueba TRUNCA `silver_set.jsonl`.
 - `--model gemini-2.5-flash-lite` — modelo más barato
 - `--output PATH` — escribir a archivo distinto
 - `--force` — re-etiquetar desde cero (ignora cursor). **Necesario una vez**

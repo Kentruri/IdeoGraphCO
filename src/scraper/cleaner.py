@@ -136,7 +136,9 @@ _UI_NOISE_PATTERN = re.compile(
     r"|Recuerda que las respuestas generadas pueden presentar inexactitudes[^\n]*"
     r"|De acuerdo con las políticas de la IA[^\n]*"
     r"|no es posible responder a las preguntas relacionadas[^\n]*"
+    r"|^\s*Bloque de preguntas y respuestas\s*$"
     r")",
+    re.MULTILINE,
 )
 
 # ---------------------------------------------------------------------------
@@ -185,12 +187,16 @@ _SECTION_CUTOFF_PATTERN = re.compile(
     re.DOTALL,
 )
 
-# Marcador de inicio de artículo (El Tiempo prefija con "Noticia\n")
+# Marcador de inicio de artículo (El Tiempo prefija con "Noticia\n").
+# El prefijo a borrar se ACOTA a los primeros 300 caracteres: sin la guarda,
+# una línea suelta "Opinión"/"Entrevista" a mitad del cuerpo (módulo de nota
+# relacionada) borraba todo lo anterior — artículos reducidos a la mitad en
+# silencio (reproducido en la revisión ago-2026). Análogo a la guarda de
+# posición de _safe_section_cutoff.
 _ARTICLE_START_MARKER = re.compile(
-    r"\A.*?\n\s*"
+    r"\A[\s\S]{0,300}?\n\s*"
     r"(?:Noticia|Análisis|Opinión|Editorial|Reportaje|Crónica|Entrevista|"
     r"Exclusivo suscriptores)\s*\n",
-    re.DOTALL,
 )
 
 # ---------------------------------------------------------------------------
@@ -205,12 +211,74 @@ _UI_SHORT_LINES = re.compile(
     r"Compartir|Guardar|Comentar|Imprimir|"
     r"Reportar\s+(?:un\s+)?error|"
     r"Suscríbete|Suscribirse|Recibir\s+alertas|"
+    r"Exclusivo\s+suscriptores|"
     r"\d+\s*min(?:utos)?\s+de\s+lectura|"
     r"Foto[\s:]+[^\n]{0,80}|"           # "Foto: AFP" — pie corto, sin pie largo de fotonota
     r"Cr[eé]ditos?[\s:]+[^\n]{0,80}|"
     r"AFP|EFE|Reuters|Colprensa"        # créditos de agencia sueltos
-    r")\s*$",
+    # `:?` final: "Compartir:" (con dos puntos) sobrevivía al ancla `$`
+    # — 14/15 artículos de razonpublica lo arrastraban.
+    r")\s*:?\s*$",
     re.IGNORECASE | re.MULTILINE,
+)
+
+# Reproductor de audio embebido ("Escuchar este artículo"): quedaban el
+# cronómetro y el separador como líneas sueltas — 31/35 de elespectador.
+_MEDIA_PLAYER_UI = re.compile(
+    r"^\s*(?:\d{1,2}:\d{2}(?::\d{2})?|/|\|)\s*$",
+    re.MULTILINE,
+)
+
+# Etiqueta de sección suelta en una línea ("Política", "Economía", "Cali").
+# Debe ser la línea COMPLETA y sin puntuación de oración: la prosa real no
+# produce líneas de una sola palabra-sección.
+_SECTION_LABEL_LINE = re.compile(
+    r"^\s*(?:"
+    r"Política|Politica|Economía|Economia|Judicial|Justicia|Nación|Nacion|"
+    r"Internacional|Mundo|Opinión|Opinion|Columnistas|Editorial|Deportes|"
+    r"Cultura|Entretenimiento|Tecnología|Tecnologia|Salud|Educación|"
+    r"Educacion|Ambiente|Región|Region|Regiones|Bogotá|Bogota|Medellín|"
+    r"Medellin|Cali|Barranquilla|Cartagena|Colombia|Actualidad|Últimas|"
+    r"Ultimas|Destacados|Titulares"
+    r")\s*$",
+    re.MULTILINE,
+)
+
+# Separadores tipográficos sueltos (solo asteriscos/guiones/puntos). NO toca
+# "* El nombre fue cambiado…" ni "*** Con el apoyo de…", que son notas
+# editoriales legítimas verificadas en el corpus.
+_SEPARATOR_LINE = re.compile(
+    r"^\s*(?:[*\-–—_·•]{2,}|\*)\s*$",
+    re.MULTILINE,
+)
+
+# Retorno de nota al pie ("↩︎", "↩︎ -"): artefacto de footnotes.
+_FOOTNOTE_BACKREF = re.compile(r"^\s*[↩⏎][\ufe0e\ufe0f]?\s*[-–—]?\s*$", re.MULTILINE)
+
+# CTAs modernos que abren con emoji. Requieren emoji inicial Y verbo de CTA:
+# así no se toca una cita de tuit con emoji que sí sea contenido.
+_EMOJI_CTA_LINE = re.compile(
+    r"^\s*[\U0001F300-\U0001FAFF\u2190-\u21FF\u2600-\u27BF\uFE0F\u200d]+"
+    r"[^\n]*?\b(?:"
+    r"lea|leer|le[ée]|invitamos|suscr[íi]b|s[íi]ga(?:nos)?|siga|ent[eé]rese|"
+    r"se enter[óo]|inter[ée]s en m[áa]s|escuche|escuchar|vea|mire|descargue|"
+    r"[úu]nase|[úu]nete|canal|whatsapp|newsletter|bolet[íi]n|clic"
+    r")\b[^\n]*\n?",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Nombre de una entidad pública como línea suelta (firma de comunicado).
+# Crítico ahora que 139 de las 434 fuentes son institucionales: el footer
+# dinámico por `source_name` no lo atrapa (usa la KEY, "mininterior", no el
+# nombre visible "Ministerio del Interior" — 10/10 artículos lo arrastraban).
+_INSTITUTION_LINE = re.compile(
+    r"^\s*(?:Ministerio|Minist(?:ra|ro)|Alcald[íi]a|Gobernaci[óo]n|Concejo|"
+    r"Asamblea|Contralor[íi]a|Procuradur[íi]a|Defensor[íi]a|Personer[íi]a|"
+    r"Superintendencia|Agencia|Unidad|Instituto|Departamento\s+Nacional|"
+    r"Fiscal[íi]a|Registradur[íi]a|Presidencia|Vicepresidencia|Consejo|"
+    r"Corte|Tribunal|Comisi[óo]n|Federaci[óo]n|Cámara|Camara|Senado)"
+    r"[^\n]{0,60}$",
+    re.MULTILINE,
 )
 
 # ---------------------------------------------------------------------------
@@ -305,7 +373,8 @@ def clean_article_text(
     3. Paywalls y UI de chatbot
     4. Bloques CTA + frases inline + redes sociales
     5. URLs residuales
-    6. UI shorts (Compartir, Foto:, etc.)
+    6. UI shorts (Compartir, Foto:, etc.) + reproductor, etiquetas de
+       sección, separadores, notas al pie y firmas institucionales
     7. Firmas, emails, handles y footers al final
     8. Footer dinámico de la fuente (si source_name)
     9. Section cutoff seguro (solo si el match está en la mitad final)
@@ -333,13 +402,21 @@ def clean_article_text(
     text = _SOCIAL_CTA_PATTERN.sub("", text)
     text = _BRAND_PROMO_PATTERN.sub("", text)
     text = _SECTION_HEADER_LINES.sub("", text)
+    text = _EMOJI_CTA_LINE.sub("", text)
 
     # 5. URLs y emails residuales
     text = _URL_PATTERN.sub("", text)
     text = _EMAIL_ANYWHERE_PATTERN.sub("", text)
 
-    # 6. UI shorts (Compartir, Foto: pie corto, créditos de agencia)
+    # 6. UI shorts (Compartir, Foto: pie corto, créditos de agencia) y
+    #    artefactos de plantilla: reproductor, etiquetas de sección,
+    #    separadores, notas al pie y firmas institucionales.
     text = _UI_SHORT_LINES.sub("", text)
+    text = _MEDIA_PLAYER_UI.sub("", text)
+    text = _SECTION_LABEL_LINE.sub("", text)
+    text = _SEPARATOR_LINE.sub("", text)
+    text = _FOOTNOTE_BACKREF.sub("", text)
+    text = _INSTITUTION_LINE.sub("", text)
 
     # 7. Firmas, emails, handles, footers al final
     text = _SIGNATURE_PATTERN.sub("", text)

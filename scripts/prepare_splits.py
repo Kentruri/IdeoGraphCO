@@ -191,6 +191,36 @@ def main() -> None:
             "Anti-fuga: %d near-duplicados del test excluidos de train/val", leaked,
         )
 
+    # --- Dedup DENTRO del pool train/val ---
+    # Los cables republicados (Colprensa/EFE, comunicados que FCM/Asocapitales
+    # y las alcaldías duplican) entran con URLs distintas; sin este paso el
+    # mismo texto cae en train Y val e infla las métricas de validación.
+    seen_hashes: set[str] = set()
+    seen_titles: set[str] = set()
+    internal_dups = 0
+    for label_idx in sorted(pool_by_class):
+        kept = []
+        for aid in sorted(pool_by_class[label_idx]):
+            record = by_id[aid]
+            h = content_hash(record.get("text", ""))
+            t = (
+                normalize_title(record["title"])
+                if record.get("title") else None
+            )
+            if h in seen_hashes or (t and t in seen_titles):
+                internal_dups += 1
+                continue
+            seen_hashes.add(h)
+            if t:
+                seen_titles.add(t)
+            kept.append(aid)
+        pool_by_class[label_idx] = kept
+    if internal_dups:
+        logger.info(
+            "Dedup interno train/val: %d duplicados de contenido/título excluidos",
+            internal_dups,
+        )
+
     # --- Split estratificado train/val por clase ---
     rng = random.Random(args.seed)
     train_ids: list[str] = []

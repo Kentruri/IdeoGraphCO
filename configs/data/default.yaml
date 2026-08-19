@@ -6,7 +6,9 @@
 #   - Categórico: {"label": "populismo"}  o  {"label_idx": 2}
 #   - Legacy (silver continuo): 8 floats por eje → argmax al vuelo (deprecado)
 data_path: "data/processed/dataset.jsonl"
-model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
+# (El tokenizer sigue SIEMPRE a cfg.model.model_name; este campo no se lee.
+#  Se conserva comentado como referencia del default del benchmark.)
+# model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
 
 # Chunking (V_doc = mean V_chunk_i)
 chunk_size: 512            # tokens por chunk (límite BERT)

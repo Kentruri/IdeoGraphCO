@@ -19,7 +19,11 @@ from dataclasses import dataclass, field
 # Títulos de páginas de sección/listado (no de artículos individuales)
 _LISTING_TITLE_PATTERN = re.compile(
     r"(?:"
-    r"últimas noticias"
+    # "últimas noticias" al inicio del título = página de sección. A mitad de
+    # título solo cuenta si le sigue una ENUMERACIÓN (", fotos", "y videos"):
+    # un live-blog legítimo ("Terremoto: últimas noticias del rescate") pasa.
+    r"^\s*últimas noticias"
+    r"|[:|»]\s*últimas noticias\s*(?:,| y )"
     r"|noticias,? fotos y videos"
     r"|noticias y (?:radio|videos|fotos)"
     r"|radio online"
@@ -101,8 +105,17 @@ def assess_article_quality(title: str, text: str) -> QualityVerdict:
 
     # Prosa sustancial: rechaza con <2 párrafos reales; con exactamente 2,
     # solo si además la prosa no cierra oraciones (un brief legítimo de dos
-    # párrafos bien redactados pasa).
-    if substantial < 2 or (substantial == 2 and closure < 0.35):
+    # párrafos bien redactados pasa). EXCEPCIÓN: trafilatura a veces devuelve
+    # el artículo entero en UN solo bloque sin saltos de línea — prosa real
+    # larga que cierra oraciones no se castiga por la ausencia de '\n'.
+    single_block_prose = (
+        len(lines) <= 2
+        and len(text) >= 600
+        and text.count(". ") + text.count(".\n") >= 4
+    )
+    if (
+        substantial < 2 or (substantial == 2 and closure < 0.35)
+    ) and not single_block_prose:
         reasons.append("pocos_parrafos")
 
     if closure < MIN_SENTENCE_CLOSURE:

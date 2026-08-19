@@ -17,7 +17,7 @@ python -m src.training.train
 # Otro encoder del benchmark
 python -m src.training.train model=beto
 python -m src.training.train model=xlm-roberta
-python -m src.training.train model=xlnet        # placeholder mDeBERTa (TBD)
+python -m src.training.train model=xlnet        # XLNet original (inglés, decisión ago-2026)
 
 # Hiperparámetros
 python -m src.training.train model.learning_rate=1e-5 trainer.max_epochs=15

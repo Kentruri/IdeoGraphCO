@@ -81,6 +81,11 @@ class IdeoGraphDataModule(L.LightningDataModule):
         el gold en train y cada semilla del benchmark obtenía un test
         distinto — sin ningún error visible.
         """
+        # setup() se llama por etapa (fit → validate → test): sin este guard,
+        # el corpus completo se re-tokenizaba 3 veces por corrida.
+        if self.train_ds is not None:
+            return
+
         if self.splits_path and not self.splits_path.exists():
             raise FileNotFoundError(
                 f"No existe {self.splits_path}. Corre `python scripts/prepare_splits.py` "

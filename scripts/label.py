@@ -95,7 +95,7 @@ def main() -> None:
         llm_model=args.model,
         force=args.force,
         max_articles=args.max_articles,
-        rate_limit_delay=1.5,  # tier pagado permite 1000+ RPM
+        rate_limit_delay=4.5,  # tier pagado permite 1000+ RPM
     )
 
     print()

@@ -1,6 +1,6 @@
 # Data Versioning con DVC
 
-Los datos del proyecto (`data/raw/`, `data/interim/`, `data/processed/`) son grandes y cambian con cada scrape. No los subimos a git — los versiona **DVC** ([dvc.org](https://dvc.org)).
+Los datos del proyecto (`data/raw/`, `data/silver/`, `data/processed/`) son grandes y cambian con cada scrape. No los subimos a git — los versiona **DVC** ([dvc.org](https://dvc.org)).
 
 ## Cómo funciona
 
@@ -8,7 +8,7 @@ Los datos del proyecto (`data/raw/`, `data/interim/`, `data/processed/`) son gra
 ┌────────────────────────────────┐
 │ git                            │
 │  ├─ data/raw.dvc       (hash)  │  ← metadatos (~100 bytes c/u)
-│  ├─ data/interim.dvc   (hash)  │
+│  ├─ data/silver.dvc    (hash)  │
 │  └─ data/processed.dvc (hash)  │
 └────────────────────────────────┘
               │ los hashes apuntan a:
@@ -21,7 +21,7 @@ Los datos del proyecto (`data/raw/`, `data/interim/`, `data/processed/`) son gra
               ▼
 ┌────────────────────────────────┐
 │ data/raw/      (local)         │
-│ data/interim/  (local)         │
+│ data/silver/   (local)         │
 │ data/processed/(local)         │
 └────────────────────────────────┘
 ```
@@ -102,7 +102,8 @@ Trackeado por DVC:
 | Carpeta | Contenido | Tamaño aprox |
 |---------|-----------|--------------|
 | `data/raw/` | JSONLs crudos del scraping y post-cleaning | ~10 MB |
-| `data/interim/` | JSONLs etiquetados (silver) y backups | ~7 MB |
+| `data/silver/` | JSONL etiquetado (silver activo) | ~3 MB |
+| `data/interim/` | Silver legacy (escalas viejas) — solo histórico | ~10 MB |
 | `data/processed/` | `splits.json`, tensores futuros | ~10 KB |
 
 No trackeados (regenerable o local):

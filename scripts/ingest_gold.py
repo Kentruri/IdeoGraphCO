@@ -70,7 +70,14 @@ def read_book(path: Path) -> dict[str, dict]:
         scores: dict[str, int | None] = {}
         for axis in AXES:
             value = row[col[axis]] if col[axis] < len(row) else None
-            scores[axis] = int(value) if isinstance(value, (int, float)) else None
+            if isinstance(value, (int, float)):
+                scores[axis] = int(value)
+            elif isinstance(value, str) and value.strip().isdigit():
+                # Número con formato de texto (pegado que salta la data
+                # validation de Excel): antes se descartaba en silencio.
+                scores[axis] = int(value.strip())
+            else:
+                scores[axis] = None
 
         dominant = None
         if has_dominant and col[DOMINANT_COL] < len(row):
@@ -151,9 +158,11 @@ def main() -> None:
             print(f"✗ No existe {p}")
             return
 
-    # Inferir base: gold_set_v2_kevin.xlsx → gold_set_v2
+    # Inferir base: gold_set_v2_kevin.xlsx → gold_set_v2. El sufijo es el
+    # NOMBRE DEL ANOTADOR y solo existe con varios libros; recortarlo con un
+    # solo libro rompía el uso v1 (gold_set_v1 → gold_set).
     stem = book_paths[0].stem
-    base = stem.rsplit("_", 1)[0] if len(book_paths) > 1 or "_" in stem else stem
+    base = stem.rsplit("_", 1)[0] if len(book_paths) > 1 else stem
     annotation_dir = ROOT / "annotation"
 
     jsonl_path = Path(args.jsonl) if args.jsonl else annotation_dir / f"{base}.jsonl"
@@ -173,6 +182,11 @@ def main() -> None:
 
     # --- Leer libros ---
     annotators = [p.stem.rsplit("_", 1)[-1] for p in book_paths]
+    if len(set(annotators)) != len(annotators):
+        print(f"✗ Nombres de anotador duplicados en los libros: {annotators}. "
+              "Renombra los archivos (el sufijo tras el último '_' identifica "
+              "al anotador).")
+        return
     books = {name: read_book(p) for name, p in zip(annotators, book_paths)}
     for name, ann in books.items():
         n_dominant = sum(1 for a in ann.values() if a["dominant"])
@@ -259,10 +273,12 @@ def main() -> None:
         if aid in consensus:
             final[aid] = {"label": consensus[aid], "source": "human-consensus"}
         elif len(distinct) == 1 and labels:
-            n_annotators = len(per_annotator)
             methods = {m for _l, m in per_annotator.values()}
             source = "human" if methods == {"explicit"} else "human-argmax"
-            if n_annotators >= 2:
+            # "-agreed" exige que DOS anotadores hayan etiquetado de verdad:
+            # con uno en blanco, resolver con la etiqueta del otro no es
+            # acuerdo y marcarlo así inflaba la trazabilidad del α.
+            if len(labels) >= 2:
                 source += "-agreed"
             final[aid] = {"label": labels[0], "source": source}
         else:

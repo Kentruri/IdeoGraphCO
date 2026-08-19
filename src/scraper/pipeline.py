@@ -28,7 +28,6 @@ from pathlib import Path
 from tqdm import tqdm
 
 from src.scraper.article_filter import is_real_article
-from src.scraper.cleaner import clean_article_text
 from src.scraper.db import is_already_scraped, is_duplicate_content, mark_as_scraped
 from src.scraper.parser import (
     _adaptive_sleep,
@@ -49,6 +48,11 @@ logger = logging.getLogger(__name__)
 # Los appends al JSONL y al filter-log se serializan (varias fuentes en
 # paralelo escriben al mismo archivo).
 _WRITE_LOCK = threading.Lock()
+
+# Hashes de contenido "en vuelo": reclamados por un worker que aún no llega a
+# mark_as_scraped. Cierra la ventana TOCTOU del dedup por contenido.
+_INFLIGHT_LOCK = threading.Lock()
+_INFLIGHT_HASHES: set[str] = set()
 
 # Primeros N caracteres del texto que se guardan en el filter-log: son el
 # dataset de entrenamiento del prefilter (scripts/train_prefilter.py).
@@ -108,49 +112,49 @@ def discover_candidate_urls(
         fresh.extend(extra_candidates)
         logger.info("  [%s] Externas (GDELT): %d URLs", name, len(extra_candidates))
 
-    candidate_urls = dedupe_normalized(fresh)
+    # Presupuesto de candidatas: se gasta SOLO en URLs nuevas, y TODAS las
+    # decisiones de escalamiento (sitemap histórico, crawl) se toman con el
+    # conteo de NO-vistas. Contar lo fresco crudo saltaba el sitemap
+    # histórico justo en las fuentes con RSS rico (el RSS repite lo mismo
+    # entre corridas), bloqueando el único camino al archivo de 4-6 años.
+    budget = max_articles * 2
+    unseen: list[str] = []
+    seen_set: set[str] = set()
 
-    # Sitemap histórico solo si la frescura no alcanzó (se baraja: no trae
-    # fechas y sirve para ampliar el dataset, no para lo último).
-    if len(candidate_urls) < max_articles * 2:
+    def _add_unseen(urls: list[str]) -> int:
+        added = 0
+        for candidate in urls:
+            if len(unseen) >= budget:
+                break
+            if candidate not in seen_set and not is_already_scraped(candidate):
+                unseen.append(candidate)
+                seen_set.add(candidate)
+                added += 1
+        return added
+
+    _add_unseen(dedupe_normalized(fresh))
+
+    # Sitemap histórico si lo fresco no llenó el presupuesto (se baraja: no
+    # trae fechas; el muestreo aleatorio sobre el archivo profundo es lo que
+    # aporta las noticias antiguas).
+    if len(unseen) < budget:
         sitemap_urls = discover_urls_sitemap(
             url, url_filters if mode == "sitemap" else [],
         )
         random.shuffle(sitemap_urls)
-        existing = set(candidate_urls)
-        new = [u for u in dedupe_normalized(sitemap_urls) if u not in existing]
-        candidate_urls.extend(new)
-        logger.info("  [%s] Sitemap: %d (%d nuevas)", name, len(sitemap_urls), len(new))
+        added = _add_unseen(dedupe_normalized(sitemap_urls))
+        logger.info("  [%s] Sitemap: %d (%d nuevas)", name, len(sitemap_urls), added)
 
-    # Gastar el presupuesto de candidatas SOLO en URLs nuevas. Sin este filtro,
-    # en corridas sucesivas el corte de max_articles*2 se llenaba de URLs ya
-    # scrapeadas (el RSS repite lo fresco) y cada corrida rendía menos aunque
-    # el archivo histórico tuviera material de sobra.
-    budget = max_articles * 2
-    unseen: list[str] = []
-    for candidate in candidate_urls:
-        if len(unseen) >= budget:
-            break
-        if not is_already_scraped(candidate):
-            unseen.append(candidate)
-
-    # Crawl si RSS+sitemap no aportaron suficientes candidatas NUEVAS: con
-    # `not candidate_urls` las fuentes cuyo sitemap devuelve unas pocas URLs
-    # inservibles (stale, de paginación) nunca llegaban al crawl.
+    # Crawl de portada como último recurso si sigue faltando material nuevo.
     if len(unseen) < max_articles:
         crawl_urls = discover_urls_crawl(url)
         if mode == "sitemap":
             crawl_urls = _filter_political_urls(crawl_urls, url_filters)
         random.shuffle(crawl_urls)
-        existing = set(unseen)
-        new = [
-            u for u in dedupe_normalized(crawl_urls)
-            if u not in existing and not is_already_scraped(u)
-        ]
-        unseen.extend(new)
-        logger.info("  [%s] Crawl fallback: %d (%d nuevas)", name, len(crawl_urls), len(new))
+        added = _add_unseen(dedupe_normalized(crawl_urls))
+        logger.info("  [%s] Crawl fallback: %d (%d nuevas)", name, len(crawl_urls), added)
 
-    return unseen[:budget]
+    return unseen
 
 
 def process_url(
@@ -189,13 +193,11 @@ def process_url(
 
     content_hash = article["content_hash"]
 
-    # Re-aplicar cleaner (idempotente). extract_article ya lo aplicó, pero
-    # esto deja explícito que el cleaning forma parte del pipeline.
-    article["text"] = clean_article_text(
-        article["text"],
-        source_name=source,
-        authors=article.get("authors"),
-    )
+    # OJO: el cleaner corre UNA sola vez (dentro de extract_article). No debe
+    # re-aplicarse aquí: no es idempotente (una segunda pasada puede consumir
+    # marcadores del cuerpo y recortar el artículo — reproducido: 1050→519
+    # chars) y el content_hash de la BD quedaría calculado sobre un texto
+    # distinto del persistido, rompiendo rebuild_dedup_db.
     if len(article["text"]) < min_chars:
         mark_as_scraped(article_url, content_hash, source, category, article["scraped_at"])
         return None, "too_short"
@@ -208,14 +210,27 @@ def process_url(
         mark_as_scraped(article_url, content_hash, source, category, article["scraped_at"])
         return None, f"low_quality:{verdict.reasons[0]}"
 
-    if is_duplicate_content(content_hash):
+    # Chequeo y reclamo ATÓMICOS del hash: con workers>1 dos fuentes pueden
+    # extraer el mismo cable (Colprensa/EFE) a la vez; la BD se marca mucho
+    # después (tras el filtro LLM), así que sin el reclamo en memoria ambos
+    # pasarían el chequeo y el duplicado entraría dos veces.
+    with _INFLIGHT_LOCK:
+        duplicate = (
+            content_hash in _INFLIGHT_HASHES or is_duplicate_content(content_hash)
+        )
+        if not duplicate:
+            _INFLIGHT_HASHES.add(content_hash)
+    if duplicate:
         mark_as_scraped(article_url, content_hash, source, category, article["scraped_at"])
         return None, "dup_content"
 
     if use_llm_filter:
         # --- Etapa 0: prefilter local (gratis) ---
         if prefilter is not None:
-            decision = prefilter.decide(article["text"])
+            # Decidir sobre el MISMO head con el que se entrena (los logs
+            # guardan text_head de 3000 chars): decidir sobre el texto
+            # completo invalidaba la calibración de umbrales.
+            decision = prefilter.decide(article["text"][:_TEXT_HEAD_CHARS])
             if decision.action != "uncertain":
                 if filter_log_path is not None:
                     append_filter_decision(filter_log_path, {
@@ -249,6 +264,7 @@ def process_url(
             model=llm_model,
             escalate_model=escalate_model,
             escalate_threshold=escalate_threshold,
+            rate_limiter=rate_limiter,
         )
 
         # Fallo del LLM (cuota/servicio/parseo) ≠ "no político": la URL no se
@@ -270,6 +286,9 @@ def process_url(
                 "kept": is_political,
                 "escalated": info.get("escalated", False),
                 "primary_confidence": info.get("primary_confidence"),
+                # Señal de limpieza: alimenta la mejora del cleaner vía
+                # scripts/analyze_filter_log.py.
+                "text_issues": info.get("text_issues", []),
                 "text_head": article["text"][:_TEXT_HEAD_CHARS],
             })
 
@@ -426,6 +445,11 @@ def _process_source(
             counts[reason] = counts.get(reason, 0) + 1
             if reason == "scrape_fail":
                 consecutive_errors += 1
+            elif reason not in ("dup", "robot"):
+                # El fetch funcionó (el drop fue del filtro/calidad/dedup):
+                # resetear el backoff. "dup"/"robot" no tocan la red, así que
+                # no dicen nada de la salud del sitio y quedan neutrales.
+                consecutive_errors = 0
 
         if pbar is not None:
             pbar.set_postfix_str(
@@ -522,6 +546,13 @@ def scrape_pipeline(
     rate_limiter = LLMRateLimiter(rate_limit_filter) if use_llm_filter else None
     show_progress = workers <= 1
 
+    # El reclamo de hashes en vuelo es protección INTRA-corrida (ventana
+    # TOCTOU entre workers); entre corridas la fuente de verdad es la BD +
+    # la guardia de salida. Sin este reset, una segunda corrida en el mismo
+    # proceso (tests, notebooks) clasificaría mal los duplicados.
+    with _INFLIGHT_LOCK:
+        _INFLIGHT_HASHES.clear()
+
     # Segunda línea de defensa del dedup: IDs ya presentes en la salida
     # (compartido entre hilos, protegido por _WRITE_LOCK)
     existing_ids = load_existing_ids(output_path)
@@ -557,7 +588,8 @@ def scrape_pipeline(
     else:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        with ThreadPoolExecutor(max_workers=workers) as executor:
+        executor = ThreadPoolExecutor(max_workers=workers)
+        try:
             futures = {
                 executor.submit(_run, name, conf): name
                 for name, conf in selected.items()
@@ -569,6 +601,17 @@ def scrape_pipeline(
                 except Exception:
                     logger.exception("Fuente %s falló", name)
                     by_source[name] = {"source_error": 1}
+        except KeyboardInterrupt:
+            # Sin esto, Ctrl+C esperaba a que TODAS las fuentes en cola
+            # terminaran. Se cancela la cola; las que ya corren completan su
+            # URL actual (el estado queda consistente: dedup en BD + append).
+            logger.warning(
+                "Interrumpido: cancelando %d fuentes en cola...", len(selected),
+            )
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        else:
+            executor.shutdown(wait=True)
 
     for counts in by_source.values():
         for k, v in counts.items():

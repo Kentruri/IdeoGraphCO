@@ -30,19 +30,46 @@ for _noisy in ("google_genai", "google_genai.types", "httpx", "httpcore"):
 AXIS_NAMES: list[str] = IDEOLOGY_CLASSES
 DOMINANT_KEY = "dominant"
 
-CURSOR_PATH = SILVER_DIR / ".silver_cursor"
+# Cursor SIDECAR por archivo de salida (<output>.cursor): un cursor global
+# único corrompía el estado al etiquetar cualquier otro archivo con --input/
+# --output (el cursor de un archivo aplicaba al siguiente).
+_LEGACY_CURSOR_PATH = SILVER_DIR / ".silver_cursor"
+
+# Tras N fallos CONSECUTIVOS del LLM se asume cuota agotada / servicio caído
+# y la corrida se detiene SIN avanzar el cursor (el artículo se reintenta en
+# la próxima corrida). Sin esto, una cuota agotada "etiquetaba" miles de
+# líneas como errores silenciosos, perdiéndolas para siempre.
+_MAX_CONSECUTIVE_FAILURES = 5
 
 
-def _read_cursor() -> int:
+def _cursor_path_for(output_path: Path) -> Path:
+    return Path(str(output_path) + ".cursor")
+
+
+def _read_cursor(output_path: Path) -> int:
     """Lee la última línea etiquetada (0 si no hay cursor)."""
-    if CURSOR_PATH.exists():
-        return int(CURSOR_PATH.read_text().strip())
+    cursor_path = _cursor_path_for(output_path)
+    if cursor_path.exists():
+        return int(cursor_path.read_text().strip())
+    # Migración: el cursor global viejo solo aplica a la salida por defecto.
+    if output_path == SILVER_DIR / "silver_set.jsonl" and _LEGACY_CURSOR_PATH.exists():
+        value = int(_LEGACY_CURSOR_PATH.read_text().strip())
+        cursor_path.write_text(str(value))
+        _LEGACY_CURSOR_PATH.unlink()
+        return value
     return 0
 
 
-def _write_cursor(line_num: int) -> None:
+def _write_cursor(output_path: Path, line_num: int) -> None:
     """Guarda la última línea etiquetada."""
-    CURSOR_PATH.write_text(str(line_num))
+    _cursor_path_for(output_path).write_text(str(line_num))
+
+
+def _append_failed(output_path: Path, line_num: int, url: str) -> None:
+    """Registra la línea fallida en <output>.failed para reintento dirigido."""
+    failed_path = Path(str(output_path) + ".failed")
+    with open(failed_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"line": line_num, "url": url}) + "\n")
 
 
 def parse_response(response_text: str) -> dict | None:
@@ -192,7 +219,29 @@ def label_news_file(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    cursor = 0 if force else _read_cursor()
+    if force:
+        # Resetear el cursor ANTES de truncar la salida: interrumpir entre el
+        # open("w") y el primer artículo dejaba salida vacía + cursor viejo
+        # (la siguiente corrida "continuaba" saltándose todo lo truncado).
+        _write_cursor(output_path, 0)
+        cursor = 0
+    else:
+        cursor = _read_cursor(output_path)
+        if output_path.exists() and output_path.stat().st_size > 0:
+            with open(output_path, encoding="utf-8") as f:
+                first = json.loads(f.readline())
+            if "label" not in first:
+                raise SystemExit(
+                    f"{output_path} tiene formato LEGACY (continuo, sin 'label'): "
+                    "appendear registros categóricos lo dejaría mixto. "
+                    "Re-etiqueta desde cero con --force."
+                )
+            if cursor == 0:
+                raise SystemExit(
+                    f"{output_path} tiene contenido pero el cursor está en 0 "
+                    "(estado inconsistente): appendear duplicaría artículos. "
+                    "Usa --force para re-etiquetar desde cero."
+                )
     mode = "w" if force else "a"
 
     with open(input_path, encoding="utf-8") as f:
@@ -215,6 +264,7 @@ def label_news_file(
     system_prompt = build_system_prompt(include_examples=True)
     labeled_count = 0
     error_count = 0
+    consecutive_failures = 0
 
     pbar = tqdm(
         total=pending,
@@ -239,8 +289,16 @@ def label_news_file(
                 if not line:
                     continue
 
-                raw = json.loads(line)
-                text = raw["text"]
+                try:
+                    raw = json.loads(line)
+                    text = raw["text"]
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    # Línea corrupta = permanente: saltar avanzando el cursor
+                    # (sin esto abortaba el etiquetado y quedaba en bucle).
+                    logger.warning("Línea %d corrupta (%s), saltando.", i + 1, e)
+                    error_count += 1
+                    _write_cursor(output_path, i + 1)
+                    continue
 
                 # Truncar textos muy largos (ahorro de tokens)
                 if len(text) > 8000:
@@ -255,18 +313,31 @@ def label_news_file(
                 )
 
                 if response_text is None:
+                    consecutive_failures += 1
+                    if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                        # Cuota agotada o servicio caído: NO avanzar el cursor
+                        # (este artículo se reintenta) y detener la corrida.
+                        logger.error(
+                            "%d fallos consecutivos del LLM: deteniendo. El "
+                            "cursor queda en %d; reintenta cuando la cuota se "
+                            "restablezca.", consecutive_failures, i,
+                        )
+                        break
                     logger.warning("Línea %d: falló tras reintentos, saltando.", i + 1)
+                    _append_failed(output_path, i + 1, raw.get("url", ""))
                     error_count += 1
-                    _write_cursor(i + 1)
+                    _write_cursor(output_path, i + 1)
                     pbar.update(1)
                     pbar.set_postfix(ok=labeled_count, err=error_count)
                     continue
+                consecutive_failures = 0
 
                 result = parse_response(response_text)
                 if result is None:
                     logger.warning("Línea %d: respuesta inválida, saltando.", i + 1)
+                    _append_failed(output_path, i + 1, raw.get("url", ""))
                     error_count += 1
-                    _write_cursor(i + 1)
+                    _write_cursor(output_path, i + 1)
                     pbar.update(1)
                     pbar.set_postfix(ok=labeled_count, err=error_count)
                     continue
@@ -291,6 +362,9 @@ def label_news_file(
                     "label_idx": CLASS_TO_IDX[dominant],
                     "label_source": "silver-llm",
                     "judge_model": llm_model,
+                    # El juez decide sobre los primeros 8000 chars; el
+                    # clasificador entrena con el texto completo. Auditable.
+                    "judge_truncated": len(raw["text"]) > 8000,
                     # Scores de intensidad (señal secundaria: auditoría/análisis)
                     **{axis: normalized[axis] for axis in AXIS_NAMES},
                 }
@@ -298,7 +372,7 @@ def label_news_file(
                 fout.write(json.dumps(output_record, ensure_ascii=False) + "\n")
                 fout.flush()
                 labeled_count += 1
-                _write_cursor(i + 1)
+                _write_cursor(output_path, i + 1)
 
                 pbar.update(1)
                 pbar.set_postfix(ok=labeled_count, err=error_count)

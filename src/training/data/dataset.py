@@ -125,6 +125,11 @@ class IdeoGraphDataset(Dataset):
         self._cls_id = self.tokenizer.cls_token_id
         self._sep_id = self.tokenizer.sep_token_id
         self._pad_id = self.tokenizer.pad_token_id
+        # XLNet coloca <cls> al FINAL de la secuencia (formato canónico de su
+        # pre-entrenamiento: contenido <sep> <cls>); la familia BERT lo lleva
+        # al inicio. El modelo hace la misma detección vía config.model_type
+        # para extraer el embedding de la posición correcta.
+        self._cls_at_end = "xlnet" in type(self.tokenizer).__name__.lower()
 
         self.articles: list[dict] = self._load(data_path)
         self._chunks_per_article: list[list[list[int]]] = [
@@ -197,7 +202,10 @@ class IdeoGraphDataset(Dataset):
         input_ids_list: list[list[int]] = []
         attention_mask_list: list[list[int]] = []
         for content in chunks:
-            ids = [self._cls_id] + list(content) + [self._sep_id]
+            if self._cls_at_end:
+                ids = list(content) + [self._sep_id, self._cls_id]
+            else:
+                ids = [self._cls_id] + list(content) + [self._sep_id]
             mask = [1] * len(ids)
             pad_len = self.chunk_size - len(ids)
             if pad_len > 0:

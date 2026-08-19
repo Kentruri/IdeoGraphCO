@@ -22,7 +22,7 @@ estas preguntas por sí misma; el código ya refleja esas resoluciones:
 | 1 | Cabeza binaria de politicidad | **Pendiente de aval** — implementada la Opción B (filter LLM aguas arriba; `use_politicity_head=false`) |
 | 2 | Composición del dataset | Sigue a la pregunta 1 (hoy: 100% político) |
 | 3 | Formato del Gold Set | **RESUELTO por el anteproyecto** — se implementó la Opción C (escalas 1-5 + `clase_dominante` explícita, doble anotación con solape y α; ver `workflows-guide/04-gold-set.md`) |
-| 4 | XLNet sin versión en español | **Pendiente de aval** — configurado mDeBERTa como placeholder (Opción C) |
+| 4 | XLNet sin versión en español | **RESUELTO (ago-2026)** — se usa `xlnet-base-cased` (Opción A): mantener el modelo comprometido en el anteproyecto |
 | 5 | Silver: argmax vs re-etiquetar | **RESUELTO por el anteproyecto** — Opción B: el judge ya pide la clase dominante (`scripts/label.py --force` re-etiqueta los 544) |
 | 6 | Parámetros de chunking | **Implementados** (512/384/8, promedio simple) — validar en el aval |
 | 7 | Métricas adicionales | Base implementada (por clase + confusión + errores entre opuestos en `scripts/final_eval.py`); Kappa/MCC opcionales |
@@ -233,7 +233,7 @@ prefiere ceñirnos estrictamente a las del PDF?
 | 1 | Clasificador binario de politicidad | B (filter LLM como componente aguas arriba, modelo neural con 1 cabeza) |
 | 2 | Composición del dataset | 100% político (consistente con opción B de tema 1) |
 | 3 | Formato del Gold Set | Mantener multi-columna 1-5 y convertir con argmax |
-| 4 | Reemplazo de XLNet | mDeBERTa (`microsoft/mdeberta-v3-base`) |
+| 4 | Reemplazo de XLNet | RESUELTO: `xlnet-base-cased` (el original, en inglés) |
 | 5 | Re-etiquetado del silver | Sí, re-etiquetar (~COP 3,600) |
 | 6 | Parámetros de chunking | chunk_size=512, stride=384, max_chunks=8 |
 | 7 | Métricas adicionales | Incluir Cohen's Kappa, MCC y análisis de opuestos |

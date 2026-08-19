@@ -98,9 +98,10 @@ def main() -> None:
     )
 
     # Verificación de procedencia del test: el reporte de tesis exige gold humano
-    splits_path = Path(data_cfg.get("splits_path", ""))
+    splits_value = data_cfg.get("splits_path") or ""
+    splits_path = Path(splits_value) if splits_value else None
     test_label_source = "?"
-    if splits_path.exists():
+    if splits_path is not None and splits_path.exists():
         with open(splits_path, encoding="utf-8") as f:
             test_label_source = json.load(f).get("test_label_source", "legacy")
     if test_label_source != "human":

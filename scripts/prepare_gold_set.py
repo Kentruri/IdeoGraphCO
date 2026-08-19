@@ -170,7 +170,13 @@ def build_excel(samples: list[dict], output_path: Path, annotator: str) -> None:
             a.get("category", ""),
             a.get("url", ""),
             a.get("title", ""),
-            a.get("text", ""),
+            # Límite duro de Excel: 32.767 chars por celda (openpyxl lanza
+            # IllegalCharacterError o corta). El texto completo sigue en el
+            # JSONL por id; la celda es solo material de lectura del anotador.
+            (
+                a.get("text", "")[:32000] + "\n[... truncado para Excel]"
+                if len(a.get("text", "")) > 32000 else a.get("text", "")
+            ),
             *[None] * len(AXES),  # ejes (anotador llena)
             None,  # clase_dominante (anotador llena — OBLIGATORIA)
             None,  # notes

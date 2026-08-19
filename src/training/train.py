@@ -9,6 +9,7 @@ recolecte.
 """
 
 import json
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -130,15 +131,22 @@ def train(cfg: DictConfig) -> None:
         print("\n[OK] Smoke test completado. No se guardan métricas finales.")
         return
 
-    # --- Test final (OPCIONAL — protocolo del anteproyecto) ---
-    # Durante el benchmark la selección de modelo se hace SOLO con validación
-    # (run_test=false); el test/gold se toca UNA vez, con el modelo ya
-    # elegido (scripts/final_eval.py o run_test=true explícito). Evaluar
-    # todos los modelos × semillas contra el test lo contamina por selección.
-    run_test = bool(cfg.get("run_test", True))
+    # --- Test final (OPT-IN — protocolo del anteproyecto) ---
+    # La selección de modelo se hace SOLO con validación; el test/gold se
+    # toca UNA vez, con el modelo ya elegido (scripts/final_eval.py o
+    # run_test=true explícito). El default es False: con True por defecto,
+    # cada entrenamiento suelto evaluaba el gold y contaminaba el protocolo.
+    run_test = bool(cfg.get("run_test", False))
     test_results = []
     # Métricas de validación del MEJOR checkpoint (las que usa la selección
     # del benchmark y el reporte P2.1).
+    # Copia estable del mejor checkpoint: TODA la documentación y
+    # final_eval.py referencian logs/checkpoints/<alias>/best.ckpt.
+    if trainer.checkpoint_callback and trainer.checkpoint_callback.best_model_path:
+        shutil.copyfile(
+            trainer.checkpoint_callback.best_model_path, ckpt_dir / "best.ckpt",
+        )
+
     val_results = trainer.validate(model, datamodule=datamodule, ckpt_path="best")
     val_per_class = getattr(model, "val_per_class_final", None)
     val_confmat = getattr(model, "val_confmat_final", None)

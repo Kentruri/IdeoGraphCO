@@ -2,6 +2,11 @@
 # los archivos .dvc (metadatos) sí van a git.
 # DVC crea su propio .gitignore dentro de cada carpeta versionada.
 data/scraper_history.db
+data/scraper_history.db-wal
+data/scraper_history.db-shm
+**/.silver_cursor
+**/*.jsonl.cursor
+**/*.jsonl.failed
 **/.label_cursor
 **/.filter_cursor
 **/.clean_cursor

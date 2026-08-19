@@ -54,12 +54,14 @@ def load_all_metrics(benchmark_dir: Path) -> list[dict]:
             data = json.load(f)
 
         match = _RUN_KEY_RE.match(subdir.name)
-        if match:
-            data["_encoder_canonical"] = match.group("encoder")
-            data["_seed"] = int(match.group("seed"))
-        else:
-            data["_encoder_canonical"] = data.get("encoder_alias", subdir.name)
-            data["_seed"] = data.get("seed", 0)
+        if not match:
+            # Corridas sueltas de `python -m src.training.train` (sin sufijo
+            # __seedN) pueden llevar otros hiperparámetros: mezclarlas en los
+            # agregados del benchmark contamina el reporte P2.1.
+            print(f"  (ignorando corrida no-benchmark: {subdir.name})")
+            continue
+        data["_encoder_canonical"] = match.group("encoder")
+        data["_seed"] = int(match.group("seed"))
         results.append(data)
     return results
 

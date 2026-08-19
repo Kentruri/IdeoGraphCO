@@ -216,3 +216,73 @@ def test_cleaner_new_rules():
     ):
         assert garbage not in cleaned, garbage
     assert "Congreso" in cleaned
+
+
+def test_cleaner_template_artifacts():
+    """Artefactos de plantilla medidos en el corpus real (auditoría ago-2026).
+
+    Los 6 patrones que sobrevivían al cleaner: reproductor de audio, etiqueta
+    de sección suelta, "Compartir:" (el ':' rompía el ancla), firma
+    institucional, CTAs que abren con emoji y separadores tipográficos.
+    """
+    from src.scraper.cleaner import clean_article_text
+
+    dirty = (
+        POLITICAL_TEXT
+        + "\nCompartir:"
+        + "\n0:00\n/"
+        + "\nPolítica"
+        + "\nMinisterio del Interior"
+        + "\n***"
+        + "\n↩︎ -"
+        + "\nExclusivo suscriptores"
+        + "\n👉 Lea más sobre el Congreso y otras noticias del mundo político."
+        + "\n✉️ Si tiene interés en más temas políticos escríbanos al correo."
+    )
+    cleaned = clean_article_text(dirty)
+    for garbage in (
+        "Compartir:", "0:00", "Ministerio del Interior", "***", "↩︎",
+        "Exclusivo suscriptores", "👉", "✉️",
+    ):
+        assert garbage not in cleaned, garbage
+    assert "Congreso" in cleaned
+
+
+def test_cleaner_preserves_legitimate_content():
+    """Los patrones nuevos NO deben tocar contenido editorial legítimo."""
+    from src.scraper.cleaner import clean_article_text
+
+    # Nota editorial con asterisco (no es separador)
+    nota = "* El nombre de las mujeres gestantes fue cambiado para proteger su identidad."
+    assert "mujeres gestantes" in clean_article_text(nota)
+
+    # Crédito de financiación (verificado en el corpus de volcanicas)
+    credito = "*** Este proyecto se realizó con el apoyo de JournalismFund Europe."
+    assert "JournalismFund" in clean_article_text(credito)
+
+    # "Ministerio" dentro de una oración real, no como firma suelta
+    prosa = (
+        "El Ministerio del Interior radicó el proyecto de ley ante el Congreso "
+        "de la República en la sesión de ayer."
+    )
+    assert "radicó el proyecto" in clean_article_text(prosa)
+
+    # Emoji dentro de una cita: es contenido, no CTA
+    cita = "El senador escribió: 🔴 Rechazo total a la reforma tributaria del Gobierno."
+    assert "Rechazo total" in clean_article_text(cita)
+
+    # Hora dentro de una oración (no es el cronómetro del reproductor)
+    hora = "La plenaria se instaló a las 10:30 de la mañana con quórum decisorio."
+    assert "quórum decisorio" in clean_article_text(hora)
+
+
+def test_filter_blocking_text_issues():
+    """Los issues bloqueantes descartan aunque la categoría sea política."""
+    from src.scraper.article_filter import BLOCKING_TEXT_ISSUES, TEXT_ISSUES
+
+    assert "boilerplate_residual" in TEXT_ISSUES
+    # El boilerplate es solo señal para mejorar el cleaner: NO descarta.
+    assert "boilerplate_residual" not in BLOCKING_TEXT_ISSUES
+    # Un digest rompe el supuesto single-label del proyecto: sí descarta.
+    assert "digest_multinoticia" in BLOCKING_TEXT_ISSUES
+    assert BLOCKING_TEXT_ISSUES <= set(TEXT_ISSUES)

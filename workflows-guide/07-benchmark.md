@@ -41,7 +41,7 @@ python scripts/final_eval.py --checkpoint logs/checkpoints/<alias>__seed42/best.
 | `confliberto` | ConfliBERT-Spanish | Pre-entreno en política → debería ser el mejor |
 | `beto` | BERT-base español (BETO) | Baseline español estándar |
 | `xlm-roberta` | XLM-RoBERTa base | Multilingual grande |
-| `xlnet` | mDeBERTa (placeholder, TBD) | Ver `docs/preguntas-director.md` tema 4 |
+| `xlnet` | `xlnet-base-cased` (inglés) | Decisión ago-2026: se mantiene el modelo del anteproyecto |
 
 ## Output
 

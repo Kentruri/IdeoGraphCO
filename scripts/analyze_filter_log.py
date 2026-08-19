@@ -52,15 +52,55 @@ def main() -> None:
         return
 
     decisions: list[dict] = []
+    n_prefilter_keep = 0
+    n_prefilter_drop = 0
     with open(log_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if line:
-                decisions.append(json.loads(line))
+            if not line:
+                continue
+            record = json.loads(line)
+            # Las decisiones del prefilter se cuentan aparte: su "confidence"
+            # es P(político) del modelo local — otra escala, invertida para
+            # los drops — y mezclarla con la del LLM corrompía percentiles,
+            # umbral de escalado y casos sospechosos.
+            if record.get("engine") == "prefilter":
+                if record.get("kept"):
+                    n_prefilter_keep += 1
+                else:
+                    n_prefilter_drop += 1
+                continue
+            decisions.append(record)
+
+    n_prefilter = n_prefilter_keep + n_prefilter_drop
+    if n_prefilter:
+        print(f"\n(prefilter local: {n_prefilter} decisiones — "
+              f"{n_prefilter_keep} keep, {n_prefilter_drop} drop — "
+              "excluidas del análisis de confidence del LLM)")
 
     if not decisions:
-        print("Log vacío.")
+        print("Log vacío (sin decisiones del LLM).")
         return
+
+    # --- Problemas de limpieza del texto reportados por el LLM ---
+    issue_counts = Counter()
+    for d in decisions:
+        for issue in d.get("text_issues") or []:
+            issue_counts[issue] += 1
+    if issue_counts:
+        print("\n=== Problemas de texto detectados por el filtro ===")
+        for issue, n in issue_counts.most_common():
+            tag = " (descarta)" if issue != "boilerplate_residual" else " (solo señal)"
+            print(f"  {issue:22} {n:5}{tag}")
+        n_boiler = issue_counts.get("boilerplate_residual", 0)
+        if n_boiler:
+            print(f"\n  → {n_boiler} artículos con restos de plantilla: revisa "
+                  "src/scraper/cleaner.py. Ejemplos:")
+            shown = 0
+            for d in decisions:
+                if "boilerplate_residual" in (d.get("text_issues") or []) and shown < 3:
+                    print(f"     [{d.get('source','?')}] {d.get('url','')[:70]}")
+                    shown += 1
 
     total = len(decisions)
     n_kept = sum(1 for d in decisions if d.get("kept"))

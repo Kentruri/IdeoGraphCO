@@ -7,8 +7,13 @@ contenido de los JSONL que ya tienes.
 
 Idempotente: correrlo varias veces no duplica registros (INSERT OR IGNORE).
 
+Además de los artículos CONSERVADOS (raw/silver), restaura las URLs
+DESCARTADAS definitivamente por el filtro (desde logs/filter_decisions.jsonl,
+si existe): sin ellas, tras un rebuild el scraper re-descargaba y re-filtraba
+con API todo lo que ya se había descartado.
+
 Uso:
-    python scripts/rebuild_dedup_db.py                          # raw + silver
+    python scripts/rebuild_dedup_db.py                          # raw + silver + filter log
     python scripts/rebuild_dedup_db.py --inputs data/raw/articles.jsonl
 """
 
@@ -45,6 +50,36 @@ def rebuild_from(path: Path) -> int:
     return added
 
 
+def rebuild_dropped_from_filter_log(path: Path) -> int:
+    """Marca las URLs con decisión DEFINITIVA del filtro (kept=False).
+
+    No hay texto completo en el log, así que el hash de contenido queda
+    vacío: el dedup por URL es el que evita la re-descarga.
+    """
+    added = 0
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if record.get("kept") is not False:
+                continue
+            url = record.get("url", "")
+            if not url:
+                continue
+            for candidate in {url, normalize_url(url)}:
+                mark_as_scraped(
+                    candidate, "", record.get("source", "?"), "?",
+                    str(record.get("ts", "")),
+                )
+            added += 1
+    return added
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Reconstruye la BD de dedup del scraper")
     parser.add_argument(
@@ -68,6 +103,14 @@ def main() -> None:
             continue
         n = rebuild_from(path)
         print(f"  ✓ {path}: {n} artículos registrados")
+
+    if args.inputs is None:
+        from src.core.paths import LOGS_DIR
+
+        filter_log = LOGS_DIR / "filter_decisions.jsonl"
+        if filter_log.exists():
+            n = rebuild_dropped_from_filter_log(filter_log)
+            print(f"  ✓ {filter_log}: {n} descartes definitivos restaurados")
     print(f"BD después: {get_scraped_count()} URLs registradas")
 
 
