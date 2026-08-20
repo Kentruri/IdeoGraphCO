@@ -22,13 +22,17 @@ DOMAIN="gui/$(id -u)"
 
 die() { printf '✗ %s\n' "$1" >&2; exit 1; }
 
-corpus_count() {
-  local f="$ROOT/data/raw/articles.jsonl"
-  [[ -f "$f" ]] && wc -l < "$f" | tr -d ' ' || echo 0
+count_lines() {
+  [[ -f "$1" ]] && wc -l < "$1" | tr -d ' ' || echo 0
 }
 
+# Con --no-filter el colector escribe en articles_unfiltered.jsonl; el
+# filtrado posterior produce articles.jsonl. Se informan los dos.
+corpus_count() { count_lines "$ROOT/data/raw/articles_unfiltered.jsonl"; }
+filtered_count() { count_lines "$ROOT/data/raw/articles.jsonl"; }
+
 cmd_install() {
-  local target=40000 prefilter="" rate="4.5" workers="6" per_round="10"
+  local target=40000 prefilter="" rate="4.5" workers="6" per_round="10" nofilter=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --target)     target="$2"; shift 2 ;;
@@ -36,6 +40,7 @@ cmd_install() {
       --workers)    workers="$2"; shift 2 ;;
       --per-round)  per_round="$2"; shift 2 ;;
       --prefilter)  prefilter="yes"; shift ;;
+      --no-filter)  nofilter="yes"; shift ;;
       *) die "opción desconocida: $1" ;;
     esac
   done
@@ -46,6 +51,8 @@ cmd_install() {
   # Los argumentos van uno por línea en el plist.
   local extra=""
   [[ -n "$prefilter" ]] && extra="    <string>--prefilter</string>"
+  [[ -n "$nofilter" ]] && extra="${extra}${extra:+
+}    <string>--no-filter</string>"
 
   cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -97,6 +104,11 @@ PLIST_EOF
   echo "✓ Configuración guardada: $LABEL"
   echo "  objetivo   $target artículos"
   echo "  por ronda  $per_round/fuente · $workers workers · rate ${rate}s"
+  if [[ -n "$nofilter" ]]; then
+    echo "  filtro LLM no — se filtra aparte con scripts/filter_corpus.py"
+  else
+    echo "  filtro LLM sí (en línea)"
+  fi
   echo "  prefilter  ${prefilter:-no}"
   echo "  logs       $LOG_OUT"
   echo
@@ -122,7 +134,8 @@ cmd_stop() {
   launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null \
     || launchctl stop "$LABEL" 2>/dev/null \
     || true
-  echo "⏸  Pausado con $(corpus_count) artículos recolectados."
+  local n; n=$(corpus_count); (( n == 0 )) && n=$(filtered_count)
+  echo "⏸  Pausado con $n artículos recolectados."
   echo "   Reanudar (continúa donde iba):  ./scripts/collector.sh start"
 }
 
@@ -143,7 +156,14 @@ cmd_status() {
   else
     echo "estado    : no registrado"
   fi
-  echo "artículos : $(corpus_count)"
+  local sin_filtrar filtrados
+  sin_filtrar=$(corpus_count); filtrados=$(filtered_count)
+  if (( sin_filtrar > 0 )); then
+    echo "recolectados: $sin_filtrar (sin filtrar)"
+    echo "filtrados   : $filtrados"
+  else
+    echo "artículos : $filtrados"
+  fi
   local flog="$ROOT/logs/filter_decisions.jsonl"
   if [[ -f "$flog" ]]; then
     local n; n=$(wc -l < "$flog" | tr -d ' ')

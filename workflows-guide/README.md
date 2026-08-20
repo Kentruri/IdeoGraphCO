@@ -12,8 +12,12 @@ Resumen del pipeline en [PIPELINE.md](../PIPELINE.md). Aquí, una página por et
 | 6 | [Training](06-training.md) (Hydra + Lightning) | `python -m src.training.train` | `logs/checkpoints/...` |
 | 7 | [Benchmark](07-benchmark.md) (selección en VALIDACIÓN; test una vez con `final_eval.py`) | `python scripts/benchmark.py --seeds 42 43 44` | `reports/benchmark_report.md` + `reports/evaluacion_final.md` |
 | 8 | [Inference](08-inference.md) (heatmap HTML + servicio `POST /classify`) | ver guía | heatmap HTML / API |
+| 9 | [Compartir datos](09-compartir-datos.md) (DVC + Google Drive) | `dvc add data/raw` → `dvc push` | contenido en Drive, hashes en git |
 
 ## Versionado de datos
 
-Las carpetas `data/raw/`, `data/interim/`, `data/processed/` se versionan con
-DVC (no git). Ver [docs/data-versioning.md](../docs/data-versioning.md).
+Las carpetas `data/raw/`, `data/silver/`, `data/processed/` se versionan con
+DVC (no git): el contenido va a Google Drive y en git solo quedan los archivos
+`.dvc` con los hashes. Setup y comandos en
+[09-compartir-datos.md](09-compartir-datos.md); el detalle de cómo funciona,
+en [docs/data-versioning.md](../docs/data-versioning.md).

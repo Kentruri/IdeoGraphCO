@@ -78,6 +78,15 @@ def main() -> None:
                              "necesita que el filtro LLM genere primero su log")
     parser.add_argument("--categories", nargs="+", default=None,
                         help="Limitar a estas categorías de fuente")
+    parser.add_argument("--no-filter", action="store_true",
+                        help="Recolectar SIN el filtro LLM: no gasta API y va "
+                             "mucho más rápido, pero el corpus incluye lo no "
+                             "político. Se filtra después con "
+                             "scripts/filter_corpus.py. La salida por defecto "
+                             "pasa a articles_unfiltered.jsonl.")
+    parser.add_argument("--output", type=str, default=None,
+                        help="JSONL de salida (default: articles.jsonl, o "
+                             "articles_unfiltered.jsonl con --no-filter)")
     parser.add_argument("--stop-after-empty", type=int, default=3,
                         help="Parar tras N rondas consecutivas sin artículos "
                              "nuevos (fuentes agotadas). Default: 3")
@@ -91,7 +100,14 @@ def main() -> None:
         signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt),
     )
 
-    output_path = RAW_DIR / "articles.jsonl"
+    if args.output:
+        output_path = Path(args.output)
+    elif args.no_filter:
+        # Corpus sin filtrar: nombre distinto para que el filtrado posterior
+        # escriba en articles.jsonl y nada aguas abajo tenga que cambiar.
+        output_path = RAW_DIR / "articles_unfiltered.jsonl"
+    else:
+        output_path = RAW_DIR / "articles.jsonl"
     filter_log = LOGS_DIR / "filter_decisions.jsonl"
     filter_log.parent.mkdir(parents=True, exist_ok=True)
 
@@ -105,13 +121,15 @@ def main() -> None:
     from google import genai
 
     load_dotenv()
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise SystemExit("✗ Falta GEMINI_API_KEY en .env")
-    client = genai.Client(api_key=api_key)
+    client = None
+    if not args.no_filter:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise SystemExit("✗ Falta GEMINI_API_KEY en .env")
+        client = genai.Client(api_key=api_key)
 
     prefilter = None
-    if args.prefilter:
+    if args.prefilter and not args.no_filter:
         path = (
             "data/models/prefilter.joblib" if args.prefilter == "__default__"
             else args.prefilter
@@ -128,7 +146,9 @@ def main() -> None:
     print(f"  Faltan:          {max(0, args.target - start_count):,}")
     print(f"  Fuentes:         {len(sources)}")
     print(f"  Por ronda:       {args.per_round}/fuente · {args.workers} workers")
+    print(f"  Filtro LLM:      {'NO (se filtra después)' if args.no_filter else 'SÍ'}")
     print(f"  Prefilter:       {'SÍ' if prefilter else 'NO'}")
+    print(f"  Salida:          {output_path.name}")
     print("=" * 66)
     print("  Interrumpible: Ctrl+C y relanzar el mismo comando continúa.")
     print()
@@ -151,7 +171,7 @@ def main() -> None:
                 sources=sources,
                 output_path=output_path,
                 max_per_source=args.per_round,
-                use_llm_filter=True,
+                use_llm_filter=not args.no_filter,
                 llm_client=client,
                 llm_model=args.model,
                 min_chars=args.min_chars,
@@ -202,7 +222,10 @@ def main() -> None:
         print(f"    python scripts/collect_corpus.py --target {args.target}")
     else:
         print("\n  ✓ Objetivo alcanzado. Siguiente paso:")
-        print("    python scripts/label.py            # etiquetado silver")
+        if args.no_filter:
+            print("    python scripts/filter_corpus.py    # filtrar (politicidad)")
+        else:
+            print("    python scripts/label.py            # etiquetado silver")
         print("    dvc add data/raw                   # versionar el corpus")
     print("=" * 66)
 
