@@ -146,7 +146,6 @@ def extract_article(url: str, source: str, category: str) -> dict | None:
             "id": article_id(url),
             "text": text,
             "title": title,
-            "authors": authors,
             "source": source,
             "category": category,
             "url": url,

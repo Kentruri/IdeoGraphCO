@@ -22,7 +22,7 @@ _CTA_BLOCK_PATTERN = re.compile(
     r"Más noticias|Noticias relacionadas|Siga el minuto a minuto:?)"
     r"\s*\n\s*\n?"
     r"[^\n]{0,200}\n?",
-    re.MULTILINE,
+    re.MULTILINE | re.IGNORECASE,   # los sitios varían la capitalización
 )
 
 # Frases sueltas sin bloque (a veces aparecen inline)
@@ -43,6 +43,8 @@ _SOCIAL_CTA_PATTERN = re.compile(
     r"|Queremos tener una comunicación más directa"
     r"|Únete a nuestro canal de WhatsApp"
     r"|Síguenos en WhatsApp"
+    r"|Siga (?:nuestro|el) (?:nuevo )?canal de WhatsApp"
+    r"|No se pierda todo nuestro contenido multimedia"
     r"|No olviden? suscribirse a nuestro canal de YouTube"
     r"|[^\n]*aporte en nuestra Vaki"
     r")[^\n]*\n?",
@@ -174,17 +176,79 @@ _BRAND_FOOTER_PATTERN = re.compile(
 # Listings de noticias relacionadas (cuando trafilatura captura mal el artículo)
 # ---------------------------------------------------------------------------
 
+# Cortes INEQUÍVOCOS: estas cadenas jamás son contenido editorial, así que se
+# aplican SIN guarda de posición. La guarda del 50% existe para los cortes
+# ambiguos ("Tendencias" puede ser prosa), pero bloqueaba el corte legítimo en
+# notas cortas: un teaser de El Tiempo con 290 chars de cuerpo y 850 de promo
+# arrancaba el bloque al 26% del texto y sobrevivía entero (ago-2026).
+_BRAND_CUTOFF_PATTERN = re.compile(
+    r"\n\s*"
+    r"(?:BOLETINES EL TIEMPO|EL TIEMPO GOOGLE NEWS|EL TIEMPO WHATSAPP|"
+    r"EL TIEMPO APP|SUSCRÍBETE AL DIGITAL|"
+    r"Sigue toda la información de [A-Z][^\n]{1,60} en Facebook|"
+    r"Conforme a los criterios de|"
+    # Carrusel de relacionados al pie (contextoganadero: 12 líneas de firmas
+    # de OTRAS notas tras este encabezado).
+    r"Noticias?\s+Relacionadas?\s*$|Art[íi]culos?\s+Relacionados?\s*$|"
+    r"Te\s+puede\s+interesar\s*$|Lo\s+m[áa]s\s+visto\s*$|"
+    # Bloque de suscripción/comentarios al cierre (ambitojuridico: 3 de 4
+    # artículos lo arrastraban).
+    r"¡?Bienvenido a nuestra secci[óo]n de comentarios|"
+    r"Gracias por leernos\b|"
+    r"Para unirte a la conversaci[óo]n, necesitas estar suscrito)"
+    r".*$",
+    re.DOTALL | re.IGNORECASE,
+)
+
+# Cortes AMBIGUOS: pueden aparecer en prosa legítima, así que solo se aplican
+# si el match cae en la mitad final del texto (ver _safe_section_cutoff).
 _SECTION_CUTOFF_PATTERN = re.compile(
     r"\n\s*"
     r"(?:Más para ver|Nuestro mundo|Más noticias|Lo más leído|Lo último|"
     r"Más sobre|También en [A-Z]|Tendencias|En portada|Otras noticias|"
-    r"Horóscopo\s*\n|Crucigrama\s*\n|"
-    r"BOLETINES EL TIEMPO|EL TIEMPO GOOGLE NEWS|EL TIEMPO WHATSAPP|"
-    r"EL TIEMPO APP|SUSCRÍBETE AL DIGITAL|"
-    r"Sigue toda la información de [A-Z][^\n]{1,50} en Facebook|"
-    r"Conforme a los criterios de\s*$)"
+    r"Horóscopo\s*\n|Crucigrama\s*\n)"
     r".*$",
     re.DOTALL,
+)
+
+# Firma concatenada por trafilatura: "PERIODISTAActualizado:" — rol en
+# mayúsculas pegado a la fecha de actualización.
+_BYLINE_ARTIFACT = re.compile(
+    r"^\s*[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{3,30}(?:Actualizado|Publicado)\s*:[^\n]*$",
+    re.MULTILINE,
+)
+
+# Firma "Por<Autor> - <fecha>" pegada sin espacio, típica de los listados de
+# notas relacionadas: "PorPedro Fonseca-16 de Abril 2026", "Por - 04 de
+# Marzo 2014" (autor vacío). Nunca es prosa del artículo.
+_MESES = (
+    "enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|"
+    "octubre|noviembre|diciembre"
+)
+_BYLINE_PATTERN = (
+    r"Por\s*[^\n\d]{0,45}?-\s*\d{1,2}\s+de\s+(?:" + _MESES + r")"
+    r"(?:\s+de)?\s+\d{4}"
+)
+_BYLINE_DATE_LINE = re.compile(
+    r"^\s*" + _BYLINE_PATTERN + r"\s*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+# La firma del artículo va JUSTO después de su titular, así que todo lo que
+# la precede es prefijo: el titular propio (ya está en el campo `title`) o
+# basura de un carrusel de destacados. Caso real de contextoganadero: el
+# texto abría con el titular y la firma de OTRA nota, luego "Cargando...",
+# y solo entonces la firma real. Acotado a los primeros 400 chars, y greedy
+# para cortar en la ÚLTIMA firma dentro de esa ventana.
+_BYLINE_START_CUTOFF = re.compile(
+    r"\A[\s\S]{0,400}^\s*" + _BYLINE_PATTERN + r"\s*$\n?",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+# Placeholders de carga que trafilatura recoge como texto.
+_LOADING_PLACEHOLDER = re.compile(
+    r"^\s*(?:Cargando\.{0,3}|Loading\.{0,3}|Publicidad|Advertisement)\s*$",
+    re.MULTILINE | re.IGNORECASE,
 )
 
 # Marcador de inicio de artículo (El Tiempo prefija con "Noticia\n").
@@ -194,7 +258,10 @@ _SECTION_CUTOFF_PATTERN = re.compile(
 # silencio (reproducido en la revisión ago-2026). Análogo a la guarda de
 # posición de _safe_section_cutoff.
 _ARTICLE_START_MARKER = re.compile(
-    r"\A[\s\S]{0,300}?\n\s*"
+    # El prefijo es OPCIONAL: cuando "Noticia" es la PRIMERA línea no hay
+    # ningún \n antes y el marcador nunca disparaba (verificado en El Tiempo,
+    # ago-2026).
+    r"\A(?:[\s\S]{0,300}?\n)?\s*"
     r"(?:Noticia|Análisis|Opinión|Editorial|Reportaje|Crónica|Entrevista|"
     r"Exclusivo suscriptores)\s*\n",
 )
@@ -337,6 +404,25 @@ def _dynamic_brand_footer(source_name: str) -> re.Pattern:
     return re.compile(rf"\n\s*{escaped}\s*$", re.MULTILINE)
 
 
+def _dedupe_consecutive_lines(text: str) -> str:
+    """Colapsa líneas consecutivas idénticas.
+
+    Varios CMS emiten el lede dos veces (resumen + primer párrafo) y
+    trafilatura lo captura duplicado, inflando el texto que ve el modelo.
+    Solo consecutivas: una frase repetida a distancia puede ser legítima.
+    """
+    out: list[str] = []
+    previous = None
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped and stripped == previous:
+            continue
+        out.append(line)
+        if stripped:
+            previous = stripped
+    return "\n".join(out)
+
+
 def _remove_author_lines(text: str, authors: list[str]) -> str:
     """Remueve líneas que solo contienen el nombre de un autor."""
     if not authors:
@@ -368,7 +454,7 @@ def clean_article_text(
 
     Aplica en orden:
     0. Normalización Unicode (NFKC) — convierte \\xa0 → espacio normal, etc.
-    1. Marcador de inicio: si hay "Noticia\\n"/"Análisis\\n", descartar todo lo previo
+    1. Cortes inequívocos de marca (promos de El Tiempo) y firma concatenada
     2. Cookie banners (completo + restos + restos de UI legal)
     3. Paywalls y UI de chatbot
     4. Bloques CTA + frases inline + redes sociales
@@ -384,8 +470,12 @@ def clean_article_text(
     # 0. Normalización Unicode: \xa0 → " ", caracteres compatibility, etc.
     text = unicodedata.normalize("NFKC", text)
 
-    # 1. Marcador de inicio
-    text = _ARTICLE_START_MARKER.sub("", text, count=1)
+    # 1. Cortes inequívocos de marca/relacionados (sin guarda) y firmas
+    text = _BRAND_CUTOFF_PATTERN.sub("", text)
+    text = _BYLINE_ARTIFACT.sub("", text)
+    text = _BYLINE_START_CUTOFF.sub("", text, count=1)
+    text = _BYLINE_DATE_LINE.sub("", text)
+    text = _LOADING_PLACEHOLDER.sub("", text)
 
     # 2. Cookie banners
     text = _COOKIE_BANNER_PATTERN.sub("", text)
@@ -403,6 +493,10 @@ def clean_article_text(
     text = _BRAND_PROMO_PATTERN.sub("", text)
     text = _SECTION_HEADER_LINES.sub("", text)
     text = _EMOJI_CTA_LINE.sub("", text)
+
+    # Marcador de inicio DESPUÉS de limpiar el ruido: si corre antes, un
+    # prefijo largo de CTAs agota la guarda de 300 chars y no dispara.
+    text = _ARTICLE_START_MARKER.sub("", text, count=1)
 
     # 5. URLs y emails residuales
     text = _URL_PATTERN.sub("", text)
@@ -436,7 +530,10 @@ def clean_article_text(
     if authors:
         text = _remove_author_lines(text, authors)
 
-    # 11. Normalizar espacios
+    # 11. Colapsar líneas consecutivas repetidas (lede duplicado por el CMS)
+    text = _dedupe_consecutive_lines(text)
+
+    # 12. Normalizar espacios
     text = _TRAILING_SPACES.sub("", text)
     text = _MULTI_NEWLINES.sub("\n\n", text)
     text = text.strip()

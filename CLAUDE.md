@@ -40,6 +40,10 @@ interactivo?
 - Dominio temático ESTRICTO: noticias políticas de Colombia (electoral,
   legislativo, política exterior, gobernanza). Se excluye farándula y lo
   judicial que no impacte la agenda pública — eso implementa el filter LLM.
+- El TEMA debe ser colombiano, no solo el medio: la categoría
+  `political_foreign` del filtro descarta la política de terceros países que
+  la prensa colombiana cubre (elecciones en Chile, Irán-EE.UU.). La política
+  exterior COLOMBIANA sí entra, porque el anteproyecto la declara en alcance.
 - SOLO prensa colombiana (decisión reforzada ago-2026 con auditoría de
   colombianidad: medir % de contenido colombiano antes de añadir fuentes).
 - Una sola distribución Softmax de dimensión 8 que suma 1.0 (single-label);
@@ -78,8 +82,15 @@ en el análisis de errores del OE3.
 
 ## Arquitectura del modelo
 
+**Entrada canónica** (`src/core/text.py`, `build_model_input`): titular limpio
++ línea en blanco + cuerpo. La usan las TRES etapas que tocan la etiqueta —
+judge, dataset e inferencia — porque antes divergían (el juez y el
+entrenamiento veían solo `text`, la API antependía el titular: train/serve
+skew). Al titular se le quita el sufijo del medio (`… | CONtexto Ganadero`):
+es constante por fuente y sería una huella que el modelo usaría como atajo.
+
 ```
-texto largo → K chunks de 512 tokens (sliding_window, stride=384, max K=16
+titular + cuerpo → K chunks de 512 tokens (sliding_window, stride=384, max K=16
               → cubre hasta el token 6.270; solape de 126 tokens = 25%)
                     ↓
               Encoder (BETO / ConfliBERT / XLM-RoBERTa / XLNet)

@@ -1,4 +1,4 @@
-"""Ingesta del gold anotado: Excel → α de Krippendorff → consenso → JSONL humano.
+"""Ingesta del gold anotado (Excel o Label Studio) → α de Krippendorff → consenso → JSONL.
 
 Este script cierra el hueco crítico del pipeline: antes de él, el "test gold"
 se evaluaba contra las etiquetas SILVER del LLM porque la anotación humana
@@ -33,6 +33,7 @@ from pathlib import Path
 
 import openpyxl
 
+from src.agents.gold import labelstudio
 from src.agents.gold.agreement import krippendorff_alpha, percent_agreement
 from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES
 
@@ -41,11 +42,13 @@ DOMINANT_COL = "clase_dominante"
 
 
 def read_book(path: Path) -> dict[str, dict]:
-    """Lee la hoja 'Articulos' de un libro anotado.
+    """Lee un libro anotado: Excel (.xlsx) o export JSON de Label Studio.
 
     Returns:
         {id: {"dominant": str|None, "scores": {eje: int|None}, "notes": str}}
     """
+    if path.suffix.lower() == ".json":
+        return labelstudio.parse_export(path)
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     if "Articulos" not in wb.sheetnames:
         raise ValueError(f"{path}: no tiene hoja 'Articulos'")
@@ -55,8 +58,9 @@ def read_book(path: Path) -> dict[str, dict]:
     headers = [str(h).strip() if h is not None else "" for h in next(rows)]
     col = {name: i for i, name in enumerate(headers)}
 
-    required = ["id", *AXES]
-    missing = [c for c in required if c not in col]
+    # Los 8 ejes son OPCIONALES: por defecto el libro solo pide
+    # clase_dominante (ver prepare_gold_set.py --with-scales).
+    missing = [c for c in ("id",) if c not in col]
     if missing:
         raise ValueError(f"{path}: faltan columnas {missing}")
     has_dominant = DOMINANT_COL in col
@@ -69,6 +73,9 @@ def read_book(path: Path) -> dict[str, dict]:
 
         scores: dict[str, int | None] = {}
         for axis in AXES:
+            if axis not in col:
+                scores[axis] = None
+                continue
             value = row[col[axis]] if col[axis] < len(row) else None
             if isinstance(value, (int, float)):
                 scores[axis] = int(value)
@@ -127,7 +134,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Ingesta del gold anotado + Krippendorff α")
     parser.add_argument(
         "--books", nargs="+", required=True,
-        help="Libros anotados (.xlsx), uno por anotador",
+        help="Libros anotados, uno por anotador: .xlsx (Excel) o .json "
+             "(export JSON de Label Studio). Se pueden mezclar.",
     )
     parser.add_argument(
         "--jsonl", type=str, default=None,
@@ -317,14 +325,30 @@ def main() -> None:
             scores_by_annotator = {
                 name: b[aid]["scores"] for name, b in books.items() if aid in b
             }
+            # Las escalas 1-5 son opcionales (prepare_gold_set --with-scales):
+            # si nadie las anotó, no se guarda un dict de 8 null por anotador.
+            scores_by_annotator = {
+                name: scores for name, scores in scores_by_annotator.items()
+                if any(v is not None for v in scores.values())
+            }
+            # Notas de los anotadores: NO alimentan al modelo (el Dataset solo
+            # lee text/title/label), pero explican los casos dudosos en el
+            # análisis de errores del OE3 y en la iteración del codebook.
+            notes_by_annotator = {
+                name: b[aid]["notes"] for name, b in books.items()
+                if aid in b and b[aid]["notes"]
+            }
             record = {
                 **article,
                 "label": resolution["label"],
                 "label_idx": CLASS_TO_IDX[resolution["label"]],
                 "label_source": resolution["source"],
-                "annotators": sorted(scores_by_annotator),
-                "human_scores": scores_by_annotator,
+                "annotators": sorted(name for name, b in books.items() if aid in b),
             }
+            if scores_by_annotator:
+                record["human_scores"] = scores_by_annotator
+            if notes_by_annotator:
+                record["annotator_notes"] = notes_by_annotator
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             written += 1
             label_dist[resolution["label"]] += 1

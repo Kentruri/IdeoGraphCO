@@ -25,6 +25,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from src.core.schema import IDEOLOGY_CLASSES
+from src.core.text import build_model_input
 from src.inference.delta import delta_d
 from src.inference.predictor import IdeoClassifierPredictor
 
@@ -81,7 +82,9 @@ def health() -> dict:
 def classify(request: ClassifyRequest) -> ClassifyResponse:
     if _predictor is None:
         raise HTTPException(status_code=503, detail="Modelo no cargado")
-    text = f"{request.title}\n\n{request.text}" if request.title else request.text
+    # Misma composición que el entrenamiento (src/core/text.py): sin esto,
+    # el modelo entrenaba sin titular y servía con él.
+    text = build_model_input(request.title, request.text)
     result = _predictor.predict(text)
     # El predictor devuelve porcentajes; el contrato del BE usa [0, 1]
     probabilities = {

@@ -45,9 +45,12 @@ OPPOSITE_PAIRS: list[tuple[str, str]] = [
 ]
 
 # Campos canónicos del JSONL de un artículo (sin labels).
+# `authors` NO se persiste: solo se usa DURANTE el scraping para borrar las
+# líneas de firma del cuerpo (parser.clean_article_text). Guardarlo después
+# es peso muerto, y un nombre de autor repetido sería otra huella de fuente
+# que el clasificador podría usar como atajo.
 ARTICLE_FIELDS: tuple[str, ...] = (
-    "id", "text", "title", "authors", "source", "category",
-    "url", "date", "scraped_at",
+    "id", "text", "title", "source", "category", "url", "date", "scraped_at",
 )
 
 # Campos canónicos del JSONL etiquetado (artículo + label categórico).

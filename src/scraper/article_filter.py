@@ -1,12 +1,22 @@
-"""LLM filter — clasifica un texto en 4 categorías editoriales.
+"""LLM filter — clasifica un texto en 5 categorías editoriales.
 
 Usa Gemini para clasificar:
-- "political_article": artículo político con impacto institucional (CONSERVAR)
+- "political_article": política COLOMBIANA con impacto institucional (CONSERVAR)
+- "political_foreign": política de otro país, cubierta por prensa colombiana
 - "nonpolitical_article": artículo bien formado pero sin dimensión política
 - "biography_static": perfiles de personas o páginas institucionales estáticas
 - "garbage": menús, listas de enlaces, fragmentos sin coherencia
 
 Solo se conservan los textos clasificados como "political_article".
+
+`political_foreign` existe porque el corpus es de prensa colombiana, y los
+medios colombianos cubren el mundo: un análisis de las elecciones en Chile
+está en un medio colombiano pero no es política colombiana. Las 8 clases
+ideológicas están ancladas en actores y discurso de Colombia (V-Party
+situado en la agenda nacional), así que etiquetar política extranjera con
+esos marcadores no tiene sentido metodológico. Se separa en su propia
+categoría, en vez de mezclarla con "nonpolitical", para poder medir cuánto
+contenido internacional produce cada fuente.
 """
 
 import json
@@ -22,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Categorías válidas (deben coincidir con FILTER_SYSTEM_PROMPT).
 FILTER_CATEGORIES: list[str] = [
     "political_article",
+    "political_foreign",
     "nonpolitical_article",
     "biography_static",
     "garbage",

@@ -102,6 +102,20 @@ def main() -> None:
                     print(f"     [{d.get('source','?')}] {d.get('url','')[:70]}")
                     shown += 1
 
+    # --- Política extranjera: cuánto produce cada fuente ---
+    foreign = [d for d in decisions if d.get("category") == "political_foreign"]
+    if foreign:
+        by_source = Counter(d.get("source", "?") for d in foreign)
+        kept_by_source = Counter(d.get("source", "?") for d in decisions if d.get("kept"))
+        print(f"\n=== Política EXTRANJERA descartada ({len(foreign)}) ===")
+        print("  Fuentes que más contenido internacional producen:")
+        for src, n in by_source.most_common(10):
+            total_src = n + kept_by_source.get(src, 0)
+            pct = 100 * n / total_src if total_src else 0
+            print(f"    {src:22} {n:4} de {total_src:4} ({pct:.0f}% internacional)")
+        print("  → Si una fuente supera ~50%, evalúa si vale la pena scrapearla:")
+        print("    gastas API para descartar la mayoría de lo que trae.")
+
     total = len(decisions)
     n_kept = sum(1 for d in decisions if d.get("kept"))
     n_drop = total - n_kept

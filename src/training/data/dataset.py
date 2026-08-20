@@ -46,6 +46,7 @@ from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 
 from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES, NUM_CLASSES
+from src.core.text import build_model_input
 
 
 def resolve_label_idx(article: dict) -> int:
@@ -132,8 +133,11 @@ class IdeoGraphDataset(Dataset):
         self._cls_at_end = "xlnet" in type(self.tokenizer).__name__.lower()
 
         self.articles: list[dict] = self._load(data_path)
+        # El troceo corre sobre la MISMA composición que ve el juez y la
+        # inferencia (titular limpio + cuerpo): ver src/core/text.py.
         self._chunks_per_article: list[list[list[int]]] = [
-            self._chunk_article(a["text"]) for a in self.articles
+            self._chunk_article(build_model_input(a.get("title"), a["text"]))
+            for a in self.articles
         ]
 
     @staticmethod

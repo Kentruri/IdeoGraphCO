@@ -286,3 +286,70 @@ def test_filter_blocking_text_issues():
     # Un digest rompe el supuesto single-label del proyecto: sí descarta.
     assert "digest_multinoticia" in BLOCKING_TEXT_ISSUES
     assert BLOCKING_TEXT_ISSUES <= set(TEXT_ISSUES)
+
+
+def test_cleaner_related_articles_carousel():
+    """Carrusel de notas relacionadas (contextoganadero, ago-2026).
+
+    El artículo llegaba con el titular y la firma de OTRA nota al inicio,
+    "Cargando...", el lede duplicado, y 12 líneas de firmas de relacionadas
+    al final: 26 líneas de las que solo 10 eran cuerpo.
+    """
+    from src.scraper.cleaner import clean_article_text
+
+    cuerpo = (
+        "De acuerdo con el Dane, la exportación de carne creció en enero. "
+        "El informe de Comercio Exterior detalla las cifras del sector."
+    )
+    dirty = (
+        "Una nueva era en trazabilidad: Sinigán V6 entra en operación\n"
+        "PorPedro Fonseca-16 de Abril 2026\n"
+        "Cargando...\n"
+        "Por - 04 de Marzo 2014\n"
+        f"{cuerpo}\n"
+        f"{cuerpo}\n"                       # lede duplicado por el CMS
+        "Noticias Relacionadas\n"
+        "PorMelanny Orozco-26 de Marzo 2026\n"
+        "PorAngie Barbosa-25 de Marzo 2026\n"
+    )
+    cleaned = clean_article_text(dirty, source_name="contextoganadero")
+
+    assert cleaned.startswith("De acuerdo con el Dane")   # arranca en el cuerpo
+    assert "Sinigán V6" not in cleaned                    # titular de otra nota
+    assert "Cargando" not in cleaned
+    assert "Noticias Relacionadas" not in cleaned
+    assert "Melanny Orozco" not in cleaned
+    assert cleaned.count("De acuerdo con el Dane") == 1   # lede desduplicado
+
+
+def test_cleaner_subscription_footer_block():
+    """Bloque de suscripción/comentarios al cierre (ambitojuridico)."""
+    from src.scraper.cleaner import clean_article_text
+
+    dirty = (
+        "El Ministerio del Trabajo expidió el Decreto 992 de 2026, que reglamenta "
+        "las medidas contra el acoso laboral en las entidades públicas.\n"
+        "Gracias por leernos. Si le gusta estar informado, suscríbase.\n"
+        "¡Bienvenido a nuestra sección de comentarios!\n"
+        "Para unirte a la conversación, necesitas estar suscrito.\n"
+        "Siga nuestro nuevo canal de WhatsApp.\n"
+    )
+    cleaned = clean_article_text(dirty, source_name="ambitojuridico")
+
+    assert "Decreto 992" in cleaned
+    for junk in ("Gracias por leernos", "sección de comentarios",
+                 "estar suscrito", "WhatsApp"):
+        assert junk not in cleaned, junk
+
+
+def test_cleaner_keeps_prose_starting_with_por():
+    """'Por otra parte' / 'Por eso' son prosa, no firmas."""
+    from src.scraper.cleaner import clean_article_text
+
+    for prosa in (
+        "Por otra parte, la reglamentación establece que los empleadores deberán "
+        "adoptar protocolos de prevención del acoso laboral.",
+        "Por eso el Congreso aplazó el debate hasta la próxima legislatura.",
+        "El decreto se firmó el 16 de abril de 2026 según la Presidencia.",
+    ):
+        assert clean_article_text(prosa).strip() == prosa, prosa[:40]

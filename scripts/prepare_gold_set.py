@@ -1,4 +1,9 @@
-"""Genera el gold set (Handwrite) para anotación humana — v2 categórico.
+"""Genera el gold set para anotación humana — v2 categórico.
+
+Produce DOS formatos por anotador (mismos artículos, misma asignación):
+- Libro Excel (respaldo / quien prefiera hoja de cálculo)
+- Tareas de Label Studio (recomendado: annotation/labelstudio/) — la
+  interfaz oculta la fuente del artículo, cosa que el Excel no puede.
 
 Metodología del anteproyecto (Construcción del Corpus):
 - Los DOS investigadores anotan DE FORMA INDEPENDIENTE una muestra compartida
@@ -72,8 +77,15 @@ def stratified_sample(
     return samples
 
 
-def build_excel(samples: list[dict], output_path: Path, annotator: str) -> None:
-    """Crea el libro de un anotador: instrucciones + artículos para anotar."""
+def build_excel(
+    samples: list[dict], output_path: Path, annotator: str,
+    with_scales: bool = False,
+) -> None:
+    """Crea el libro de un anotador: instrucciones + artículos para anotar.
+
+    Con `with_scales=False` (default) el libro pide SOLO `clase_dominante`;
+    las columnas de los 8 ejes se omiten.
+    """
     wb = openpyxl.Workbook()
 
     # --- Hoja 1: Instrucciones ---
@@ -148,9 +160,10 @@ def build_excel(samples: list[dict], output_path: Path, annotator: str) -> None:
     # --- Hoja 2: Artículos ---
     ws = wb.create_sheet("Articulos")
 
+    axes = AXES if with_scales else []
     headers = (
         ["id", "source", "category", "url", "title", "text"]
-        + AXES
+        + axes
         + [DOMINANT_COL, "notes"]
     )
     ws.append(headers)
@@ -160,7 +173,7 @@ def build_excel(samples: list[dict], output_path: Path, annotator: str) -> None:
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     # Resaltar la columna obligatoria
-    dominant_idx = 7 + len(AXES)  # 1-based
+    dominant_idx = 7 + len(axes)  # 1-based
     ws.cell(row=1, column=dominant_idx).fill = PatternFill("solid", fgColor="FFE59A")
 
     for a in samples:
@@ -177,7 +190,7 @@ def build_excel(samples: list[dict], output_path: Path, annotator: str) -> None:
                 a.get("text", "")[:32000] + "\n[... truncado para Excel]"
                 if len(a.get("text", "")) > 32000 else a.get("text", "")
             ),
-            *[None] * len(AXES),  # ejes (anotador llena)
+            *[None] * len(axes),  # ejes (solo si with_scales)
             None,  # clase_dominante (anotador llena — OBLIGATORIA)
             None,  # notes
         ])
@@ -192,7 +205,7 @@ def build_excel(samples: list[dict], output_path: Path, annotator: str) -> None:
     }
     for col, w in widths.items():
         ws.column_dimensions[col].width = w
-    for col_idx in range(7, 7 + len(AXES)):
+    for col_idx in range(7, 7 + len(axes)):
         ws.column_dimensions[get_column_letter(col_idx)].width = 16
     ws.column_dimensions[get_column_letter(dominant_idx)].width = 20
     ws.column_dimensions[get_column_letter(dominant_idx + 1)].width = 30
@@ -207,16 +220,17 @@ def build_excel(samples: list[dict], output_path: Path, annotator: str) -> None:
 
     ws.freeze_panes = "G2"
 
-    # Data validation: ejes 1-5
-    dv_axes = DataValidation(
-        type="list", formula1='"1,2,3,4,5"', allow_blank=True,
-        showErrorMessage=True, errorTitle="Valor inválido",
-        error="Solo entero 1, 2, 3, 4 o 5.",
-    )
-    first_axis_col = get_column_letter(7)
-    last_axis_col = get_column_letter(7 + len(AXES) - 1)
-    dv_axes.add(f"{first_axis_col}2:{last_axis_col}{ws.max_row}")
-    ws.add_data_validation(dv_axes)
+    # Data validation: ejes 1-5 (solo si se piden las escalas)
+    if axes:
+        dv_axes = DataValidation(
+            type="list", formula1='"1,2,3,4,5"', allow_blank=True,
+            showErrorMessage=True, errorTitle="Valor inválido",
+            error="Solo entero 1, 2, 3, 4 o 5.",
+        )
+        first_axis_col = get_column_letter(7)
+        last_axis_col = get_column_letter(7 + len(axes) - 1)
+        dv_axes.add(f"{first_axis_col}2:{last_axis_col}{ws.max_row}")
+        ws.add_data_validation(dv_axes)
 
     # Data validation: clase dominante (una de las 8)
     dv_dominant = DataValidation(
@@ -286,6 +300,18 @@ def main() -> None:
         "--version", type=str, default="v2",
         help="Sufijo de versión de los archivos (default: v2)",
     )
+    parser.add_argument(
+        "--excel", action="store_true",
+        help="Genera además los libros .xlsx. Por defecto solo se generan las "
+             "tareas de Label Studio, que es el flujo recomendado.",
+    )
+    parser.add_argument(
+        "--with-scales", action="store_true",
+        help="Pide además los 8 ejes de intensidad 1-5. Por defecto solo se "
+             "anota la CLASE DOMINANTE: es lo único que consume el "
+             "clasificador multiclase, y pedir 9 decisiones por artículo en "
+             "vez de 1 multiplica el trabajo del anotador.",
+    )
     args = parser.parse_args()
 
     from src.core.paths import RAW_DIR, ROOT
@@ -318,13 +344,27 @@ def main() -> None:
 
     books, assignment = assign_books(samples, args.annotators, args.overlap)
 
+    from src.agents.gold import labelstudio
+
+    ls_dir = annotation_dir / "labelstudio"
+    config_path = labelstudio.write_labeling_config(
+        ls_dir / "labeling_config.xml", with_scales=args.with_scales,
+    )
+
     print(f"\nSolape (α): {len(assignment['overlap_ids'])} artículos anotados por todos")
     for name in args.annotators:
         n_total = len(books[name])
         n_excl = len(assignment["exclusive_ids"][name])
-        output_xlsx = annotation_dir / f"{base}_{name}.xlsx"
-        build_excel(books[name], output_xlsx, annotator=name)
-        print(f"✓ {name}: {output_xlsx.name} ({n_total} artículos: "
+        tasks_path = labelstudio.write_tasks(
+            books[name], ls_dir / f"{base}_{name}_tasks.json",
+        )
+        extra = ""
+        if args.excel:
+            output_xlsx = annotation_dir / f"{base}_{name}.xlsx"
+            build_excel(books[name], output_xlsx, annotator=name,
+                        with_scales=args.with_scales)
+            extra = f" + {output_xlsx.name}"
+        print(f"✓ {name}: {tasks_path.name}{extra} ({n_total} artículos: "
               f"{len(assignment['overlap_ids'])} solape + {n_excl} exclusivos)")
 
     with open(output_jsonl, "w", encoding="utf-8") as f:
@@ -341,10 +381,20 @@ def main() -> None:
         json.dump(assignment, f, ensure_ascii=False, indent=2)
     print(f"✓ Asignación: {output_assignment}")
 
+    print(f"✓ Plantilla Label Studio: {config_path}")
+    print(f"  Interfaz: {'clase dominante + escalas 1-5' if args.with_scales else 'solo clase dominante'}")
     print(
+        "\nANOTACIÓN (recomendado: Label Studio — guía completa en "
+        "workflows-guide/04-gold-set.md):\n"
+        "  1. pipx install label-studio   (o pip en un venv aparte)\n"
+        "  2. label-studio start → crear proyecto → Labeling Interface →\n"
+        f"     pegar el contenido de {config_path.name}\n"
+        f"  3. Importar su archivo de annotation/labelstudio/ y anotar\n"
+        f"  4. Exportar como JSON a annotation/{base}_<anotador>.json\n"
         "\nSiguiente paso (cuando terminen de anotar):\n"
         "  python scripts/ingest_gold.py --books "
-        + " ".join(f"annotation/{base}_{n}.xlsx" for n in args.annotators)
+        + " ".join(f"annotation/{base}_{n}.json" for n in args.annotators)
+        + "\n  (también acepta los .xlsx si alguien anotó en Excel)"
     )
 
 

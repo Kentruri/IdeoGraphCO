@@ -14,6 +14,7 @@ from tqdm import tqdm
 from src.agents.silver.codebook import build_system_prompt
 from src.core.paths import RAW_DIR, SILVER_DIR
 from src.core.ids import article_id
+from src.core.text import build_model_input
 from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES
 
 logger = logging.getLogger(__name__)
@@ -300,7 +301,10 @@ def label_news_file(
 
                 try:
                     raw = json.loads(line)
-                    text = raw["text"]
+                    # Titular + cuerpo: el codebook define la clase dominante
+                    # preguntando qué retórica organiza EL TITULAR y el primer
+                    # tercio. Misma composición que el entrenamiento.
+                    text = build_model_input(raw.get("title"), raw["text"])
                 except (json.JSONDecodeError, KeyError, TypeError) as e:
                     # Línea corrupta = permanente: saltar avanzando el cursor
                     # (sin esto abortaba el etiquetado y quedaba en bucle).
@@ -373,7 +377,10 @@ def label_news_file(
                     "judge_model": llm_model,
                     # Marca si el juez vio el texto recortado: permite medir
                     # en el OE3 si esos casos concentran errores.
-                    "judge_truncated": len(raw["text"]) > JUDGE_MAX_CHARS,
+                    "judge_truncated": (
+                        len(build_model_input(raw.get("title"), raw["text"]))
+                        > JUDGE_MAX_CHARS
+                    ),
                     # Scores de intensidad (señal secundaria: auditoría/análisis)
                     **{axis: normalized[axis] for axis in AXIS_NAMES},
                 }
