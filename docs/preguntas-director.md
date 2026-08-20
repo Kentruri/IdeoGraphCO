@@ -193,8 +193,13 @@ categórico (~COP 3,600)?
 **Propuesta técnica:**
 - `chunk_size = 512 tokens` (límite arquitectónico de BERT).
 - `chunk_stride = 384 tokens` (25% de overlap; estándar en literatura BERT).
-- `max_chunks = 8` por artículo (≈ 2000 tokens efectivos ≈ artículo típico
-  completo).
+- `max_chunks = 16` por artículo. Cubre hasta el token 6.270 (el chunk N
+  arranca en (N-1)·stride). Medido sobre el corpus con el tokenizer de BETO:
+  mediana 781 tokens, p95 2.928, p99 5.176. Con el valor previo de 8 se
+  truncaba el 4,2% de los artículos, que era el 10,9% de los tokens del
+  corpus (lo truncado son las columnas y reportajes largos); con 16 baja a
+  0,7% y 6,3%, por +5% de cómputo. Sube la fidelidad a la promesa del
+  anteproyecto de "sin truncar el contexto fáctico".
 - Agregación: promedio simple aritmético (fidelidad literal al PDF).
 
 **Pregunta al director:** ¿Aprueba estos parámetros?
@@ -235,5 +240,5 @@ prefiere ceñirnos estrictamente a las del PDF?
 | 3 | Formato del Gold Set | Mantener multi-columna 1-5 y convertir con argmax |
 | 4 | Reemplazo de XLNet | RESUELTO: `xlnet-base-cased` (el original, en inglés) |
 | 5 | Re-etiquetado del silver | Sí, re-etiquetar (~COP 3,600) |
-| 6 | Parámetros de chunking | chunk_size=512, stride=384, max_chunks=8 |
+| 6 | Parámetros de chunking | chunk_size=512, stride=384, max_chunks=16 (subido de 8 en ago-2026 tras medir el truncamiento real) |
 | 7 | Métricas adicionales | Incluir Cohen's Kappa, MCC y análisis de opuestos |

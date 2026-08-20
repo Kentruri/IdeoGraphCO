@@ -52,7 +52,7 @@ IDEOGRAPH_CHECKPOINT=logs/checkpoints/<alias>/best.ckpt \
 | Endpoint | Contrato |
 |----------|----------|
 | `POST /classify` | `{"title","text"}` → `{"label","probabilities" (∈[0,1], suman 1),"model_version"}` |
-| `POST /delta` | `{"p","q","method"}` → `{"delta_d"}` — métrica ΔD (P5.2, Jensen-Shannon por defecto) |
+| `POST /delta` | `{"p","q","method"}` → `{"delta_d"}` — distancia ΔD entre dos distribuciones (Jensen-Shannon por defecto) |
 | `GET /health` | estado + versión del modelo |
 
 Nota: el predictor local devuelve porcentajes (0-100); la API convierte a
@@ -63,4 +63,6 @@ probabilidades en `[0, 1]` (el formato del contrato con el backend).
 - [src/inference/predictor.py](../src/inference/predictor.py) — carga checkpoint + forward + chunking
 - [src/inference/heatmap.py](../src/inference/heatmap.py) — mapa de calor Plotly
 - [src/inference/api.py](../src/inference/api.py) — servicio FastAPI (`/classify`, `/delta`)
-- [src/inference/delta.py](../src/inference/delta.py) — métrica ΔD (P5.2)
+- [src/inference/delta.py](../src/inference/delta.py) — distancia ΔD entre dos
+  huellas de 8 clases. Soporta el "diseño comparativo" de la Fase 4; no es un
+  producto comprometido del anteproyecto (P1.1–P4.1).

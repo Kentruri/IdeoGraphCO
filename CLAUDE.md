@@ -79,7 +79,8 @@ en el análisis de errores del OE3.
 ## Arquitectura del modelo
 
 ```
-texto largo → K chunks de 512 tokens (sliding_window, stride=384)
+texto largo → K chunks de 512 tokens (sliding_window, stride=384, max K=16
+              → cubre hasta el token 6.270; solape de 126 tokens = 25%)
                     ↓
               Encoder (BETO / ConfliBERT / XLM-RoBERTa / XLNet)
                     ↓

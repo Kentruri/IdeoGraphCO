@@ -11,13 +11,32 @@ data_path: "data/processed/dataset.jsonl"
 # model_name: "eventdata-utd/ConfliBERT-Spanish-Beto-Cased-v1"
 
 # Chunking (V_doc = mean V_chunk_i)
+#
+# max_chunks NO es solo un tope de coste: es un tope de COBERTURA. El chunk N
+# empieza en (N-1)*stride, así que con 16 chunks se cubre hasta el token
+# (15*384)+510 = 6.270 y lo que pase de ahí se descarta.
+#
+# Medido sobre el corpus (553 artículos, tokenizer de BETO): mediana 781
+# tokens, p95 2.928, p99 5.176. Con max_chunks=8 se truncaba el 4,2% de los
+# artículos, pero eso era el 10,9% de los tokens del corpus (lo que se corta
+# son los textos largos: columnas y reportajes, donde más señal ideológica
+# hay). Con 16: 0,7% de artículos y 6,3% de tokens, por solo +5% de cómputo
+# (2,77 → 2,93 chunks/artículo de media).
+#
+# El anteproyecto (§5.3 y Fase 2) promete "sin truncar el contexto fáctico";
+# 16 acerca el código a esa afirmación.
 chunk_size: 512            # tokens por chunk (límite BERT)
 chunk_stride: 384          # solapamiento (25%)
-max_chunks: 8              # cap para artículos muy largos
+max_chunks: 16             # cubre hasta el token 6.270 (p99 del corpus)
 chunking_strategy: "sliding_window"  # "truncate" | "sliding_window"
 
 # DataLoader
-batch_size: 16
+# batch_size 8 + accumulate_grad_batches 2 (en configs/trainer) = batch
+# EFECTIVO de 16, el mismo de antes. El collate rellena todos los artículos
+# del batch hasta el K mayor, así que con max_chunks=16 un batch de 16 daría
+# 256 secuencias de 512 en un forward; con 8 el peor caso son 128, idéntico
+# al que ya se corría con max_chunks=8 y batch 16.
+batch_size: 8
 num_workers: 4
 pin_memory: true
 

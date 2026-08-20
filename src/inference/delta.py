@@ -1,8 +1,15 @@
-"""Métrica ΔD (P5.2) — distancia estadística entre huellas ideológicas.
+"""ΔD — distancia estadística entre dos huellas ideológicas de 8 clases.
 
-El anteproyecto define ΔD como "la distancia estadística entre el vector de
-probabilidad de la noticia original y el de la narrativa de consenso en el
-espacio probabilístico de las 8 clases".
+ALCANCE: ΔD **no es un producto comprometido** del anteproyecto aprobado
+(jun-2026), cuyos entregables van de P1.1 a P4.1. Una versión anterior del
+documento la listaba como "P5.2"; esa referencia se corrigió en ago-2026.
+
+Lo que sí compromete el anteproyecto es el soporte técnico de la Fase 4,
+"Interfaz Interactiva Comparativa: ... una aplicación web interactiva que
+adoptará un diseño comparativo, encargado de proyectar las afinidades
+ideológicas". ΔD cuantifica esa comparación entre dos distribuciones, así que
+es infraestructura de P4.1, no un producto aparte. Si aparece en la tesis,
+debe presentarse como decisión de implementación del prototipo.
 
 Implementación por defecto: **distancia de Jensen-Shannon** (raíz cuadrada
 de la divergencia de Jensen-Shannon con logaritmo base 2), porque:

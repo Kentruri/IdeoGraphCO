@@ -1,5 +1,10 @@
 # Configuración del Trainer de Lightning
 max_epochs: 10
+
+# Batch efectivo = data.batch_size * accumulate_grad_batches = 8 * 2 = 16.
+# Mantiene la dinámica de optimización mientras acota la memoria pico del
+# forward (ver la nota de batch_size en configs/data/default.yaml).
+accumulate_grad_batches: 2
 accelerator: "auto"
 devices: 1
 

@@ -35,6 +35,15 @@ DOMINANT_KEY = "dominant"
 # --output (el cursor de un archivo aplicaba al siguiente).
 _LEGACY_CURSOR_PATH = SILVER_DIR / ".silver_cursor"
 
+# Chars del artículo que ve el juez, alineados con lo que el clasificador
+# consume de verdad. Antes eran 8.000 (~1.680 tokens con el ratio real del
+# corpus, 4,76 chars/token): en el 13,2% de los artículos el juez etiquetaba
+# viendo MENOS texto del que después entrena al modelo, lo que mete ruido de
+# etiquetado. 15.000 chars ≈ 3.150 tokens y cubre el p95 del corpus (2.928
+# tokens). `judge_truncated` deja auditable el caso que aún se recorta.
+JUDGE_MAX_CHARS = 15000
+
+
 # Tras N fallos CONSECUTIVOS del LLM se asume cuota agotada / servicio caído
 # y la corrida se detiene SIN avanzar el cursor (el artículo se reintenta en
 # la próxima corrida). Sin esto, una cuota agotada "etiquetaba" miles de
@@ -301,8 +310,8 @@ def label_news_file(
                     continue
 
                 # Truncar textos muy largos (ahorro de tokens)
-                if len(text) > 8000:
-                    text = text[:8000]
+                if len(text) > JUDGE_MAX_CHARS:
+                    text = text[:JUDGE_MAX_CHARS]
 
                 # Llamar a Gemini
                 response_text = _call_gemini_with_retry(
@@ -362,9 +371,9 @@ def label_news_file(
                     "label_idx": CLASS_TO_IDX[dominant],
                     "label_source": "silver-llm",
                     "judge_model": llm_model,
-                    # El juez decide sobre los primeros 8000 chars; el
-                    # clasificador entrena con el texto completo. Auditable.
-                    "judge_truncated": len(raw["text"]) > 8000,
+                    # Marca si el juez vio el texto recortado: permite medir
+                    # en el OE3 si esos casos concentran errores.
+                    "judge_truncated": len(raw["text"]) > JUDGE_MAX_CHARS,
                     # Scores de intensidad (señal secundaria: auditoría/análisis)
                     **{axis: normalized[axis] for axis in AXIS_NAMES},
                 }

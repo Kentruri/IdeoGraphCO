@@ -64,10 +64,14 @@ probabilística → mapa de calor.
   `confidence < 0.7`, re-llama a `gemini-2.5-flash`.
 - **Chunking**: artículos largos se dividen en K chunks de 512 tokens con
   stride 384; el modelo promedia los embeddings `[CLS]` antes de la cabeza
-  softmax. `max_chunks=8` limita memoria en artículos muy largos.
-- **ΔD (P5.2)**: `src/inference/delta.py` — distancia de Jensen-Shannon
-  (default, ∈ [0,1]) entre dos distribuciones de 8 clases; alternativas
-  Hellinger y variación total. Expuesta también en `POST /delta`.
+  softmax. `max_chunks=16` cubre hasta el token 6.270 (el p99 del corpus son
+  5.176); con `batch_size=8` + `accumulate_grad_batches=2` la memoria pico es
+  la misma que la de la config previa (8 chunks × batch 16).
+- **ΔD**: `src/inference/delta.py` — distancia de Jensen-Shannon (default,
+  ∈ [0,1]) entre dos distribuciones de 8 clases; alternativas Hellinger y
+  variación total. Expuesta también en `POST /delta`. Da soporte al "diseño
+  comparativo" de la Fase 4 del anteproyecto; **no es un producto
+  comprometido** (los entregables son P1.1–P4.1).
 
 ## Decisiones pendientes
 

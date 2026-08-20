@@ -117,6 +117,7 @@ def train(cfg: DictConfig) -> None:
         devices=cfg.trainer.devices,
         precision=precision,
         callbacks=callbacks,
+        accumulate_grad_batches=cfg.trainer.get("accumulate_grad_batches", 1),
         log_every_n_steps=cfg.trainer.log_every_n_steps,
         default_root_dir=str(LOGS_DIR / "lightning_logs" / encoder_alias),
         fast_dev_run=cfg.trainer.get("fast_dev_run", False),

@@ -9,10 +9,29 @@ from __future__ import annotations
 from pathlib import Path
 
 import torch
+import yaml
 from transformers import AutoTokenizer
 
+from src.core.paths import CONFIGS_DIR
 from src.core.schema import IDEOLOGY_CLASSES
 from src.training.models.ideoclassifier import IdeoClassifier
+
+
+def _training_chunking_defaults() -> dict:
+    """Lee los parámetros de chunking del MISMO YAML que usa el entrenamiento.
+
+    Estaban hardcodeados aquí (`max_chunks=8`) y quedaron desfasados al subir
+    el entrenamiento a 16: el modelo se entrenaba viendo hasta el token 6.270
+    pero en inferencia solo veía 3.198 — train/serve skew silencioso, y peor
+    justo en los artículos largos. Leerlos de la config elimina la deriva.
+    """
+    defaults = {"chunk_size": 512, "chunk_stride": 384, "max_chunks": 16}
+    config_path = CONFIGS_DIR / "data" / "default.yaml"
+    try:
+        loaded = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except OSError:
+        return defaults
+    return {k: int(loaded.get(k, v)) for k, v in defaults.items()}
 
 
 class IdeoClassifierPredictor:
@@ -22,9 +41,9 @@ class IdeoClassifierPredictor:
         self,
         checkpoint_path: str | Path,
         device: str | None = None,
-        chunk_size: int = 512,
-        chunk_stride: int = 384,
-        max_chunks: int = 8,
+        chunk_size: int | None = None,
+        chunk_stride: int | None = None,
+        max_chunks: int | None = None,
     ) -> None:
         if device is None:
             device = (
@@ -43,13 +62,22 @@ class IdeoClassifierPredictor:
             self.model.hparams.model_name,
         )
 
-        self.chunk_size = chunk_size
-        self.chunk_stride = chunk_stride
-        self.max_chunks = max_chunks
+        # Sin valores explícitos, se toman los del entrenamiento (única
+        # fuente de verdad) para que inferencia y entrenamiento troceen igual.
+        trained = _training_chunking_defaults()
+        self.chunk_size = chunk_size if chunk_size is not None else trained["chunk_size"]
+        self.chunk_stride = (
+            chunk_stride if chunk_stride is not None else trained["chunk_stride"]
+        )
+        self.max_chunks = max_chunks if max_chunks is not None else trained["max_chunks"]
 
         self._cls_id = self.tokenizer.cls_token_id
         self._sep_id = self.tokenizer.sep_token_id
         self._pad_id = self.tokenizer.pad_token_id
+        # XLNet coloca <cls> al FINAL de la secuencia. El dataset de
+        # entrenamiento lo hace así y el modelo lee esa posición; armar el
+        # chunk en orden BERT aquí devolvería el embedding de <sep>.
+        self._cls_at_end = "xlnet" in type(self.tokenizer).__name__.lower()
 
     def _chunk_and_pad(self, text: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Devuelve (input_ids, attention_mask, chunk_mask) con shape (1, K, L)."""
@@ -72,7 +100,10 @@ class IdeoClassifierPredictor:
         input_ids_list: list[list[int]] = []
         attention_list: list[list[int]] = []
         for content in chunks:
-            ids = [self._cls_id] + content + [self._sep_id]
+            if self._cls_at_end:
+                ids = list(content) + [self._sep_id, self._cls_id]
+            else:
+                ids = [self._cls_id] + list(content) + [self._sep_id]
             mask = [1] * len(ids)
             pad_len = self.chunk_size - len(ids)
             if pad_len > 0:
