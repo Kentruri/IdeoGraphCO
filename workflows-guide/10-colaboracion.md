@@ -36,14 +36,14 @@ git add scripts src tests workflows-guide .claude .gitignore CLAUDE.md requireme
 git commit -m "feat: filtrado con agente, servicio launchd y guías"
 git push
 
-# 2. Remoto DVC en Google Drive: crear la carpeta IdeoGraphCO-data en Drive,
-#    copiar el ID de su URL y compartirla con el otro investigador (editor).
-.venv/bin/dvc remote add -d gdrive gdrive://PEGA_EL_ID_AQUI
-git add .dvc/config && git commit -m "chore: remoto DVC en Drive"
+# 2. Remoto DVC en Google Drive — YA HECHO (carpeta IdeoGraphCO-dataset).
+#    La autenticación es por cuenta de servicio: ver 09-compartir-datos.md,
+#    sección Setup. Cada máquina apunta a su copia de la clave con --local:
+.venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$HOME/.config/ideographco/gdrive-sa.json"
 
 # 3. Congelar y subir el corpus (dvc add escribe data/raw en .gitignore solo)
 .venv/bin/dvc add data/raw
-.venv/bin/dvc push                       # la 1ª vez abre el navegador para autorizar
+.venv/bin/dvc push                       # sin navegador: usa la cuenta de servicio
 git add data/raw.dvc data/.gitignore
 git commit -m "data: corpus filtrado 41k + crudo" && git push
 
@@ -65,6 +65,9 @@ IDs son de solape y cuáles exclusivos de cada uno: es lo que después usa
 ```bash
 git clone git@github.com:Kentruri/IdeoGraphCO.git && cd IdeoGraphCO
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+# la clave gdrive-sa.json se la pasa Kevin por un canal privado (NO está en el repo)
+mkdir -p ~/.config/ideographco && mv ~/Downloads/gdrive-sa.json ~/.config/ideographco/
+.venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$HOME/.config/ideographco/gdrive-sa.json"
 .venv/bin/dvc pull                       # trae el corpus desde Drive
 
 # Label Studio va en SU propio entorno, no en el venv del proyecto

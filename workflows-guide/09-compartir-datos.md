@@ -3,26 +3,41 @@
 El corpus pesa ~180 MB, demasiado para git. DVC guarda en git solo un archivo
 de hashes (`data/raw.dvc`, ~100 bytes) y el contenido real va a Google Drive.
 
-## Setup (una sola vez, quien configura)
+## Setup (una sola vez)
+
+Google **bloqueó el cliente OAuth por defecto de DVC** (sep-2026: "Esta
+aplicación está bloqueada"), así que la autorización por navegador ya no
+sirve. Se usa una **cuenta de servicio**: una identidad de Google Cloud con
+su propia clave JSON, sin navegador, sin caducidad, igual para los dos.
+
+**Quien configura (Kevin), en https://console.cloud.google.com:**
+
+1. Selector de proyecto (arriba) → *Nuevo proyecto* → nombre `IdeoGraphCO`.
+2. *APIs y servicios → Biblioteca* → buscar **Google Drive API** → *Habilitar*.
+3. *APIs y servicios → Credenciales → Crear credenciales → Cuenta de servicio*
+   → nombre `dvc-ideographco` → *Crear y continuar* → sin rol → *Listo*.
+4. Clic en la cuenta creada → pestaña *Claves* → *Agregar clave → Crear clave
+   nueva → JSON*. Se descarga un `.json`: **es la llave del corpus, no va a
+   git ni a un chat público**.
+5. Copiar el correo de la cuenta (`dvc-ideographco@ideographco-….iam.gserviceaccount.com`)
+   y en Drive **compartir la carpeta `IdeoGraphCO-dataset` con ese correo como
+   Editor**. Sin este paso la cuenta no ve la carpeta.
+
+**Cada investigador, en su máquina** (la clave la comparte Kevin por un canal
+privado, nunca por el repo):
 
 ```bash
-# 1. Crear una carpeta en Google Drive llamada "IdeoGraphCO-data".
-#    Copiar su ID de la URL:
-#    drive.google.com/drive/folders/1a2B3cD4eF5gH6iJ    ← esto
+mkdir -p ~/.config/ideographco && mv ~/Downloads/ideographco-*.json ~/.config/ideographco/gdrive-sa.json
+.venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$HOME/.config/ideographco/gdrive-sa.json"
 ```
 
-```bash
-# 2. Registrar el remoto y commitearlo
-.venv/bin/dvc remote add -d gdrive gdrive://PEGA_EL_ID_AQUI
-git add .dvc/config && git commit -m "chore: remoto DVC en Drive"
-```
+`--local` escribe en `.dvc/config.local`, que está ignorado por git: la ruta
+(y la clave) se quedan en tu máquina. El modo cuenta-de-servicio ya viene en
+`.dvc/config` para los dos.
 
-```bash
-# 3. Compartir la carpeta de Drive con el otro investigador (permiso de editor)
-```
-
-La primera vez que corras `dvc push` se abre el navegador para autorizar la
-cuenta de Google. El token queda guardado localmente.
+Los archivos subidos quedan a nombre de la cuenta de servicio (cuota propia
+de 15 GB, sobra): no borres el proyecto de Google Cloud mientras el corpus
+viva ahí.
 
 ## Subir datos (cuando el corpus cambia)
 
