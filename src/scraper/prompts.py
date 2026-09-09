@@ -25,7 +25,18 @@ El corpus se extrae de 434 fuentes colombianas y la MAYORÍA no es prensa nacion
    - Conflicto y paz: negociaciones con grupos armados (ELN, disidencias), JEP, orden público estratégico.
    - Economía y Estado: reformas nacionales, presupuesto público, Ecopetrol, tensiones Gobierno-gremios, controversias regulatorias.
    - Corrupción que afecta la administración pública o fondos del Estado.
-   - Opinión y columnas sobre el ejercicio del poder o políticas públicas.
+   - **Opinión, columnas, editoriales, análisis y cartas abiertas** sobre el
+     ejercicio del poder, políticas públicas o el debate público colombiano.
+     La opinión política ES contenido político: no exijas que informe de un
+     hecho noticioso. De hecho es el material MÁS útil del corpus, porque el
+     encuadre ideológico está explícito en vez de implícito.
+   - **Debate de política sectorial**: educación, salud, pensiones, trabajo,
+     medio ambiente, energía, tierras, seguridad. Discutir cómo debería ser
+     una política pública es política, aunque no se nombre a ningún
+     funcionario ni institución.
+   - **Memoria e historia con encuadre político**: crónicas históricas
+     (sindicalismo, conflicto armado, partidos, movimientos sociales) escritas
+     desde una lectura política del presente.
    - **Comunicados y actos de gobierno** (nacional o territorial): anuncios de política pública, inversión, decretos, ordenanzas, acuerdos, rendición de cuentas, nombramientos de alto nivel.
    - **Deliberación y control político territorial**: debates de concejo o asamblea, control político a un alcalde o gobernador, hallazgos de contraloría o personería.
    - **Posición pública de un gremio o sindicato** sobre política, regulación, tributación, laboral o negociación colectiva.
@@ -63,8 +74,18 @@ El corpus se extrae de 434 fuentes colombianas y la MAYORÍA no es prensa nacion
 4. **Evidencia explícita**: clasifica solo por lo que el texto dice, sin asumir orientación por el medio, el periodista o el político mencionado.
 5. **Persona como sujeto principal**: si el texto describe la trayectoria o perfil de una persona más que un hecho noticioso, es **biography_static** aunque la persona sea un político o un funcionario.
 6. **Nivel territorial**: lo local NO es menos político. Un debate del Concejo de Medellín o un acto de la Gobernación de Arauca es **political_article** con el mismo criterio que uno nacional. Lo que decide es que haya ejercicio del poder o política pública, no la escala.
-7. **Duda entre político y no-político**: prefiere **nonpolitical_article**.
+7. **Duda entre político y no-político**: prefiere **political_article**.
+   Este desempate es deliberadamente PERMISIVO. Un texto colombiano y
+   coherente que roza el debate público entra, aunque no sea una nota
+   institucional clásica: perder una columna de opinión política cuesta más
+   que admitir un texto de politicidad discutible, porque la opinión es
+   justamente donde la ideología se hace visible. Lo que este desempate NO
+   autoriza es meter deportes, farándula, clima, crónica roja común ni
+   trámites administrativos: eso no es duda, es un no.
 8. **Duda entre colombiano y extranjero**: prefiere **political_foreign**.
+   Aquí NO se relaja nada: las ocho clases están ancladas en actores y
+   discurso de Colombia, y un texto de política extranjera es inetiquetable
+   con ellas.
 9. **Duda entre cualquier "_article" y garbage**: prefiere **garbage**.
 10. **`confidence` es tu certeza en la CATEGORÍA asignada**, no la relevancia del texto: 0.9-1.0 caso claro; 0.7-0.9 claro con algún matiz; 0.5-0.7 caso límite genuino (se re-evaluará con un modelo mayor); <0.5 no puedes decidir con lo que ves.
 
@@ -119,7 +140,30 @@ El corpus se extrae de 434 fuentes colombianas y la MAYORÍA no es prensa nacion
    → political_article (hecho externo pero Colombia es la parte afectada y
    hay respuesta institucional colombiana)
 
-10. "El gobernador entregó 200 viviendas en Tame. // En otras noticias, la
+10. "Carta abierta a un columnista: los niveles de lectura y argumentación
+   en la escuela colombiana son preocupantes, y existe un mercado de títulos
+   donde los diplomas se compran. La universidad mira con desdén a la escuela."
+   → political_article (opinión sobre política educativa colombiana; no
+   nombra instituciones del Estado, pero debate cómo debería ser una política
+   pública: reglas de oro 7 y categoría 1)
+
+11. "Crónica: hace 90 años, 400 obreras al mando de Betsabé Espinal
+   paralizaron la Fábrica de Tejidos de Bello, en una época en que el rol
+   social de la mujer era la sumisión."
+   → political_article (memoria sindical con encuadre político explícito)
+
+12. "Las comunidades indígenas de Risaralda perdieron sus casas en el
+   terremoto y claman ayudas del Estado para reconstruir viviendas y
+   escuelas."
+   → political_article (reclamo de respuesta estatal: hay dimensión de
+   política pública, aunque el registro sea de crónica humanitaria)
+
+13. "Capturan a un general venezolano retirado en Arauca con diez cartuchos
+   en un morral; un juez le dictó medida de aseguramiento."
+   → nonpolitical_article (caso judicial ordinario sin impacto en la agenda
+   pública; el desempate permisivo de la regla 7 NO cubre la crónica roja)
+
+14. "El gobernador entregó 200 viviendas en Tame. // En otras noticias, la
    Secretaría de Salud reportó avances en vacunación. // Finalmente, el
    Indeportes anunció los juegos departamentales."
    → garbage con `text_issues: ["digest_multinoticia"]` (varias noticias

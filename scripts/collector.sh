@@ -115,16 +115,37 @@ PLIST_EOF
   echo "Arrancar:  ./scripts/collector.sh start"
 }
 
+is_registered() { launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; }
+
 cmd_start() {
   [[ -f "$PLIST" ]] || die "no instalado. Corre: ./scripts/collector.sh install"
-  # Registrar de cero: `bootout` limpia cualquier estado previo (rancio tras
-  # un stop o un crash) y `bootstrap` registra Y arranca — con KeepAlive
-  # activo launchd levanta el trabajo al registrarlo, sin kickstart.
-  launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
-  launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null \
-    || launchctl load -w "$PLIST" 2>/dev/null \
-    || die "no se pudo arrancar el servicio"
-  echo "✓ Recolectando en segundo plano. Ya puedes cerrar la terminal."
+
+  # `bootout` es ASÍNCRONO: devuelve antes de que launchd termine de dar de
+  # baja el trabajo, y un `bootstrap` inmediato falla en silencio (el arranque
+  # parecía correcto y no había proceso). Hay que esperar a que desaparezca.
+  if is_registered; then
+    launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+    local waited=0
+    while is_registered && (( waited < 15 )); do
+      sleep 1; waited=$((waited + 1))
+    done
+  fi
+
+  launchctl bootstrap "$DOMAIN" "$PLIST" \
+    || die "launchd rechazó el servicio (revisa $PLIST)"
+
+  # Verificar de verdad que arrancó, en vez de suponerlo.
+  local waited=0 pid=""
+  while (( waited < 15 )); do
+    pid=$(launchctl print "$DOMAIN/$LABEL" 2>/dev/null | awk '/^\tpid =/{print $3}')
+    [[ -n "$pid" ]] && break
+    sleep 1; waited=$((waited + 1))
+  done
+  if [[ -z "$pid" ]]; then
+    die "el servicio se registró pero no hay proceso. Revisa $LOG_ERR"
+  fi
+
+  echo "✓ Recolectando en segundo plano (pid $pid). Ya puedes cerrar la terminal."
   echo "  seguir el avance:  ./scripts/collector.sh logs"
   echo "  pausar:            ./scripts/collector.sh stop"
 }
@@ -176,15 +197,20 @@ cmd_status() {
     fi
   fi
   if [[ -s "$LOG_ERR" ]]; then
-    # `grep -c` sale con 1 cuando no hay coincidencias: con `|| echo 0` se
-    # concatenaba un segundo cero y la comparación aritmética fallaba.
-    local reales
-    reales=$(grep -cE "Traceback|CRITICAL|SystemExit|Errno" "$LOG_ERR" 2>/dev/null) || reales=0
+    # Recorrer 434 sitios genera MUCHO ruido de red (404, timeouts, redirects,
+    # HTML roto) que el pipeline ya maneja reintentando: no es un problema.
+    # Solo alertan los fallos que detienen el proceso o rompen el código.
+    # `grep -c` sale con 1 sin coincidencias: hay que asignar 0, no concatenar.
+    local reales avisos
+    reales=$(grep -cE "CRITICAL|SystemExit|ModuleNotFoundError|SyntaxError|MemoryError|No space left" \
+             "$LOG_ERR" 2>/dev/null) || reales=0
+    avisos=$(wc -l < "$LOG_ERR" | tr -d ' ')
     if (( reales > 0 )); then
-      echo "ERRORES   : $reales reales en $LOG_ERR — revísalo"
+      echo "ERRORES   : $reales graves en $LOG_ERR — revísalo"
     else
-      echo "avisos    : $(wc -l < "$LOG_ERR" | tr -d ' ') en $LOG_ERR"
-      echo "            (timeouts de sitemap y pool de conexiones: normales)"
+      echo "avisos    : $avisos líneas de red en $LOG_ERR (normal)"
+      echo "            404, timeouts y HTML roto de los 434 sitios; el"
+      echo "            pipeline los reintenta y no pierde artículos."
     fi
   fi
   echo

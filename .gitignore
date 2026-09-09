@@ -49,4 +49,15 @@ mlruns/
 wandb/
 
 # Claude Code (config local del IDE)
-.claude/
+# Config local de Claude Code, salvo el agente y el codebook del filtro: son
+# metodología del proyecto (producto P1.2) y el otro investigador los necesita.
+# Con un directorio excluido git no puede re-incluir lo de dentro, de ahí el `*`.
+.claude/*
+!.claude/agents/
+!.claude/skills/
+
+# Corpus y estado de ejecución: NUNCA por git. El corpus viaja por DVC
+# (data/raw.dvc sí se versiona; el contenido no) y agent_batches es estado
+# vivo del filtrado. Sin esto, un `git add .` intenta subir ~600 MB.
+data/raw/
+data/agent_batches/

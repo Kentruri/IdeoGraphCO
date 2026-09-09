@@ -107,3 +107,92 @@ def test_prefilter_train_and_decide(tmp_path):
         "El delantero anotó tres goles en el partido del torneo de fútbol y el "
         "equipo celebró en el estadio con la afición local." * 3
     ).action == "drop"
+
+
+def test_rss_discovery_times_out_on_silent_server():
+    """Un servidor que acepta la conexión y no responde no debe colgar.
+
+    `feedparser.parse(url)` hace su propia petición SIN timeout: con
+    workers>1 un solo feed así congelaba el ThreadPoolExecutor entero
+    (diagnosticado con `sample`: worker en SSL_read, main en as_completed —
+    13 h de recolección paradas, ago-2026).
+    """
+    import socket
+    import threading
+    import time
+
+    from src.scraper.parser import discover_urls_rss
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(5)
+    port = server.getsockname()[1]
+    held = []
+
+    def accept_and_stay_silent():
+        while True:
+            try:
+                held.append(server.accept()[0])
+            except OSError:
+                return
+
+    threading.Thread(target=accept_and_stay_silent, daemon=True).start()
+    try:
+        started = time.time()
+        urls = discover_urls_rss([f"http://127.0.0.1:{port}/feed.xml"])
+        elapsed = time.time() - started
+    finally:
+        server.close()
+        for conn in held:
+            conn.close()
+
+    assert urls == []
+    assert elapsed < 40, f"tardó {elapsed:.0f}s: el timeout del feed no aplicó"
+
+
+def test_process_has_a_default_socket_timeout():
+    """Red de seguridad: ninguna biblioteca debe poder bloquear sin techo."""
+    import socket
+
+    import src.scraper.pipeline  # noqa: F401  (importarlo lo configura)
+
+    assert socket.getdefaulttimeout() is not None
+
+
+def test_source_cooldown_pauses_and_retries_exhausted_sources():
+    """Una fuente sin rendimiento descansa N rondas y luego se reintenta.
+
+    Sin esto, cada ronda re-escaneaba las 434 fuentes completas — incluidas
+    las agotadas o caídas — pagando sitemaps y timeouts de 30s por cero
+    artículos.
+    """
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent / "scripts"))
+    from collect_corpus import update_source_cooldowns
+
+    zero_streak: dict[str, int] = {}
+    cooldown: dict[str, int] = {}
+
+    # Ronda 1: 'viva' aporta, 'muerta' no → nadie en pausa todavía (paciencia 2)
+    paused = update_source_cooldowns(
+        ["viva", "muerta"], {"viva": 8, "muerta": 0}, zero_streak, cooldown,
+    )
+    assert paused == 0 and cooldown == {}
+
+    # Ronda 2: 'muerta' falla otra vez → entra en descanso 5 rondas
+    paused = update_source_cooldowns(
+        ["viva", "muerta"], {"viva": 5, "muerta": 0}, zero_streak, cooldown,
+    )
+    assert paused == 1
+    assert cooldown["muerta"] == 4          # 5 asignadas - 1 decremento inmediato
+    assert zero_streak["muerta"] == 0       # el contador se reinicia al pausar
+
+    # Rondas 3-6: 'muerta' NO está activa; su descanso se agota solo
+    for _ in range(4):
+        update_source_cooldowns(["viva"], {"viva": 3}, zero_streak, cooldown)
+    assert "muerta" not in cooldown          # lista para reintentarse
+
+    # Y una fuente que aporta jamás entra en pausa
+    assert zero_streak.get("viva", 0) == 0

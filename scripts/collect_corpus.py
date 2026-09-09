@@ -28,10 +28,12 @@ Consultar el progreso en cualquier momento (incluso mientras corre):
 """
 
 import argparse
+import json
 import logging
 import signal
 import sys
 import time
+from collections import Counter
 from datetime import timedelta
 from pathlib import Path
 
@@ -43,6 +45,59 @@ from src.scraper.prefilter import try_load_prefilter  # noqa: E402
 from src.scraper.sources import SOURCES  # noqa: E402
 
 logger = logging.getLogger("collect_corpus")
+
+
+def per_source_counts(path: Path) -> "Counter[str]":
+    """Artículos acumulados por fuente en el JSONL (una pasada, solo lectura)."""
+    counts: Counter[str] = Counter()
+    if not path.exists():
+        return counts
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                counts[json.loads(line).get("source", "?")] += 1
+            except json.JSONDecodeError:
+                continue
+    return counts
+
+
+def update_source_cooldowns(
+    active: list[str],
+    gained_by_source: dict[str, int],
+    zero_streak: dict[str, int],
+    cooldown: dict[str, int],
+    patience: int = 2,
+    rest_rounds: int = 5,
+) -> int:
+    """Pausa las fuentes que llevan `patience` rondas sin aportar nada.
+
+    Cada ronda re-escaneaba TODAS las fuentes, incluidas las ya agotadas o
+    caídas, pagando su descubrimiento completo (sitemaps + timeouts de 30s)
+    para obtener cero artículos. Una fuente sin rendimiento descansa
+    `rest_rounds` rondas y luego se reintenta — si publica algo nuevo, se
+    recoge con unas rondas de retraso, no se pierde.
+
+    Devuelve cuántas fuentes ENTRARON en pausa en esta ronda.
+    """
+    newly_paused = 0
+    for name in active:
+        if gained_by_source.get(name, 0) > 0:
+            zero_streak[name] = 0
+            continue
+        zero_streak[name] = zero_streak.get(name, 0) + 1
+        if zero_streak[name] >= patience:
+            cooldown[name] = rest_rounds
+            zero_streak[name] = 0
+            newly_paused += 1
+    # El descanso corre para todas las pausadas, activas o no.
+    for name in list(cooldown):
+        cooldown[name] -= 1
+        if cooldown[name] <= 0:
+            del cooldown[name]
+    return newly_paused
 
 
 def count_articles(path: Path) -> int:
@@ -158,17 +213,31 @@ def main() -> None:
         return
 
     empty_streak = 0
+    zero_streak: dict[str, int] = {}
+    cooldown: dict[str, int] = {}
+    prev_counts = per_source_counts(output_path)
     try:
         for round_num in range(1, args.max_rounds + 1):
             before = count_articles(output_path)
             if before >= args.target:
                 break
 
+            active_sources = {
+                k: v for k, v in sources.items() if cooldown.get(k, 0) == 0
+            }
+            if not active_sources:
+                # Todas en pausa a la vez: liberar y probar de nuevo.
+                cooldown.clear()
+                active_sources = sources
+
             round_started = time.time()
-            print(f"── Ronda {round_num}  ({before:,}/{args.target:,})", flush=True)
+            paused = len(sources) - len(active_sources)
+            extra = f" · {paused} fuentes en descanso" if paused else ""
+            print(f"── Ronda {round_num}  ({before:,}/{args.target:,}){extra}",
+                  flush=True)
 
             scrape_pipeline(
-                sources=sources,
+                sources=active_sources,
                 output_path=output_path,
                 max_per_source=args.per_round,
                 use_llm_filter=not args.no_filter,
@@ -183,6 +252,19 @@ def main() -> None:
 
             after = count_articles(output_path)
             added = after - before
+
+            new_counts = per_source_counts(output_path)
+            gained = {
+                name: new_counts.get(name, 0) - prev_counts.get(name, 0)
+                for name in active_sources
+            }
+            newly_paused = update_source_cooldowns(
+                list(active_sources), gained, zero_streak, cooldown,
+            )
+            prev_counts = new_counts
+            if newly_paused:
+                print(f"   ({newly_paused} fuentes sin rendimiento pasan a "
+                      f"descanso; se reintentan en 5 rondas)", flush=True)
             elapsed = time.time() - round_started
             total_elapsed = time.time() - started
             gained = after - start_count

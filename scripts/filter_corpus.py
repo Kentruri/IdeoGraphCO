@@ -31,7 +31,6 @@ Uso:
 import argparse
 import json
 import logging
-import os
 import sys
 import time
 from collections import Counter
@@ -41,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.core.paths import LOGS_DIR, RAW_DIR  # noqa: E402
 from src.scraper.article_filter import is_real_article  # noqa: E402
+from src.scraper.llm_providers import build_provider_chain  # noqa: E402
 from src.scraper.prefilter import try_load_prefilter  # noqa: E402
 
 logger = logging.getLogger("filter_corpus")
@@ -73,12 +73,27 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None,
                         help="Procesar solo N artículos en esta corrida "
                              "(útil para filtrar una muestra y entrenar el prefilter)")
-    parser.add_argument("--model", type=str, default="gemini-2.5-flash-lite")
-    parser.add_argument("--escalate-model", type=str, default="gemini-2.5-flash")
+    parser.add_argument("--provider", type=str, default="gemini",
+                        help="Proveedor(es) en orden de relevo. 'gemini', "
+                             "'claude', o 'gemini,claude' para que Claude "
+                             "tome el relevo cuando Gemini se quede sin cuota")
+    parser.add_argument("--model", type=str, default=None,
+                        help="Modelo primario (default: el del proveedor)")
+    parser.add_argument("--escalate-model", type=str, default=None)
     parser.add_argument("--no-escalate", action="store_true")
     parser.add_argument("--escalate-threshold", type=float, default=0.7)
-    parser.add_argument("--rate-limit", type=float, default=4.5,
-                        help="Segundos entre llamadas (4.5 = free tier)")
+    parser.add_argument("--rate-limit", type=float, default=None,
+                        help="Segundos entre llamadas. Por defecto lo fija el "
+                             "proveedor activo (Gemini free tier: 4.5s)")
+    parser.add_argument("--filter-log", type=str, default=None,
+                        help="JSONL de decisiones (default: logs/filter_decisions.jsonl)")
+    parser.add_argument("--no-reuse", action="store_true",
+                        help="No reutilizar decisiones ya presentes en el log "
+                             "(por defecto se reutilizan y no se re-pagan)")
+    parser.add_argument("--prefer-engine", type=str, default=None,
+                        help="Motor que MANDA cuando varios decidieron el "
+                             "mismo artículo (p. ej. 'claude-agent'). Sin "
+                             "esto gana la decisión más reciente del log")
     parser.add_argument("--prefilter", nargs="?", const="__default__", default=None,
                         help="Usa el prefilter local para resolver gratis lo obvio")
     parser.add_argument("--force", action="store_true",
@@ -93,7 +108,8 @@ def main() -> None:
 
     input_path = Path(args.input) if args.input else RAW_DIR / "articles_unfiltered.jsonl"
     output_path = Path(args.output) if args.output else RAW_DIR / "articles.jsonl"
-    filter_log = LOGS_DIR / "filter_decisions.jsonl"
+    filter_log = (Path(args.filter_log) if args.filter_log
+                  else LOGS_DIR / "filter_decisions.jsonl")
 
     if not input_path.exists():
         raise SystemExit(
@@ -105,13 +121,17 @@ def main() -> None:
     filter_log.parent.mkdir(parents=True, exist_ok=True)
 
     from dotenv import load_dotenv
-    from google import genai
 
     load_dotenv()
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise SystemExit("✗ Falta GEMINI_API_KEY en .env")
-    client = genai.Client(api_key=api_key)
+    order = [name.strip() for name in args.provider.split(",") if name.strip()]
+    chain = build_provider_chain(
+        order,
+        models={name: args.model for name in order} if args.model else None,
+        escalate_models=({name: args.escalate_model for name in order}
+                         if args.escalate_model else None),
+        intervals=({name: args.rate_limit for name in order}
+                   if args.rate_limit is not None else None),
+    )
 
     prefilter = None
     if args.prefilter:
@@ -132,6 +152,41 @@ def main() -> None:
                 "  Appendear duplicaría artículos. Usa --force para re-filtrar."
             )
 
+    # Decisiones ya tomadas (por Gemini en una corrida anterior, por el
+    # agente vía scripts/agent_filter.py, o por quien sea): se reutilizan en
+    # vez de volver a pagarlas. Es lo que permite que el agente aporte al
+    # mismo corpus sin duplicar llamadas ni criterios.
+    reused: dict[str, dict] = {}
+    if not args.no_reuse and filter_log.exists():
+        with open(filter_log, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                article_id = entry.get("id")
+                if not article_id:
+                    continue
+                previous = reused.get(article_id)
+                if previous is None:
+                    reused[article_id] = entry
+                    continue
+                # Dos motores decidieron el mismo artículo. Sin una regla
+                # explícita ganaba "el último del log", que depende del orden
+                # en que se corrieron los scripts: el corpus dejaría de ser
+                # reproducible. Con --prefer-engine la precedencia es una
+                # decisión metodológica declarada, no un accidente.
+                if args.prefer_engine:
+                    if previous.get("engine") == args.prefer_engine:
+                        continue
+                    if entry.get("engine") == args.prefer_engine:
+                        reused[article_id] = entry
+                        continue
+                reused[article_id] = entry
+
     with open(input_path, encoding="utf-8") as f:
         total_lines = sum(1 for line in f if line.strip())
 
@@ -145,7 +200,15 @@ def main() -> None:
     print(f"  Ya filtrados: {cursor:,}")
     print(f"  En esta corrida: {pending:,}")
     print(f"  Prefilter:  {'SÍ' if prefilter else 'NO'}")
-    print(f"  Modelo:     {args.model}")
+    print("  Proveedores: " + " → ".join(
+        f"{p.name}({p.model})" for p in chain.providers))
+    print(f"  Decisiones reutilizables: {len(reused):,}")
+    if reused:
+        engines = Counter(e.get("engine", "?") for e in reused.values())
+        print("    por motor: " + ", ".join(
+            f"{name} {n:,}" for name, n in engines.most_common()))
+    if args.prefer_engine:
+        print(f"  Motor con precedencia: {args.prefer_engine}")
     print("=" * 66)
     print()
 
@@ -159,7 +222,9 @@ def main() -> None:
     processed = 0
     consecutive_failures = 0
     started = time.time()
-    escalate = None if args.no_escalate else args.escalate_model
+    # Con una cadena, "auto" significa «usa el modelo de escalada que
+    # cada proveedor declara»; el nombre concreto lo resuelve la cadena.
+    escalate = None if args.no_escalate else (args.escalate_model or "auto")
 
     pbar = tqdm(total=pending, desc="Filtrando", unit="art", smoothing=0.1)
     try:
@@ -191,8 +256,23 @@ def main() -> None:
                 info: dict | None = None
                 is_political = False
 
-                # Etapa 0: prefilter local (gratis)
-                if prefilter is not None:
+                # Etapa 0: decisión ya tomada antes (agente, o corrida previa)
+                previous = reused.get(article.get("id"))
+                if previous is not None:
+                    engine = previous.get("engine", "reutilizada")
+                    is_political = bool(previous.get("kept"))
+                    info = {
+                        "category": previous.get("category"),
+                        "confidence": previous.get("confidence"),
+                        "reason": previous.get("reason"),
+                        "text_issues": previous.get("text_issues", []),
+                        "provider": previous.get("provider"),
+                        "reused": True,
+                    }
+                    counts["reutilizadas"] += 1
+
+                # Etapa 1: prefilter local (gratis)
+                if info is None and prefilter is not None:
                     decision = prefilter.decide(text[:_TEXT_HEAD_CHARS])
                     if decision.action != "uncertain":
                         engine = "prefilter"
@@ -205,19 +285,29 @@ def main() -> None:
                             "text_issues": [],
                         }
 
-                # Etapa 1: filter LLM (zona gris o sin prefilter)
+                # Etapa 2: filter LLM (zona gris o sin prefilter)
                 if info is None:
-                    time.sleep(args.rate_limit)
+                    # El ritmo lo marca el proveedor ACTIVO: al relevar a uno
+                    # con límites más holgados, la espera se ajusta sola en
+                    # vez de arrastrar el 4.5s del plan gratuito de Gemini.
+                    time.sleep(chain.min_interval())
                     is_political, info = is_real_article(
-                        client, text, model=args.model,
+                        chain, text,
                         escalate_model=escalate,
                         escalate_threshold=args.escalate_threshold,
                     )
                     if info is None:
+                        if chain.active() is None:
+                            print("\n\n⚠ Todos los proveedores agotaron su "
+                                  f"cuota ({', '.join(chain.exhausted())}).")
+                            print(f"  El cursor queda en {i}: relanza el mismo "
+                                  "comando cuando se restablezca, o añade un "
+                                  "proveedor con --provider gemini,claude.")
+                            break
                         consecutive_failures += 1
                         if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
                             print(f"\n\n⚠ {consecutive_failures} fallos consecutivos "
-                                  "del LLM (¿cuota agotada?).")
+                                  "del LLM.")
                             print(f"  El cursor queda en {i}: relanza el mismo "
                                   "comando cuando se restablezca.")
                             break
@@ -228,25 +318,27 @@ def main() -> None:
                         continue
                     consecutive_failures = 0
 
-                flog.write(json.dumps({
-                    "id": article.get("id"),
-                    "url": article.get("url"),
-                    "source": article.get("source"),
-                    "engine": engine,
-                    "category": info.get("category"),
-                    "confidence": info.get("confidence"),
-                    "reason": info.get("reason"),
-                    "kept": is_political,
-                    "escalated": info.get("escalated", False),
-                    "text_issues": info.get("text_issues", []),
-                    "text_head": text[:_TEXT_HEAD_CHARS],
-                }, ensure_ascii=False) + "\n")
-                flog.flush()
+                if not info.get("reused"):
+                    flog.write(json.dumps({
+                        "id": article.get("id"),
+                        "url": article.get("url"),
+                        "source": article.get("source"),
+                        "engine": engine,
+                        "provider": info.get("provider"),
+                        "category": info.get("category"),
+                        "confidence": info.get("confidence"),
+                        "reason": info.get("reason"),
+                        "kept": is_political,
+                        "escalated": info.get("escalated", False),
+                        "text_issues": info.get("text_issues", []),
+                        "text_head": text[:_TEXT_HEAD_CHARS],
+                    }, ensure_ascii=False) + "\n")
+                    flog.flush()
 
                 if is_political:
                     fout.write(json.dumps(article, ensure_ascii=False) + "\n")
                     fout.flush()
-                    counts["kept" if engine == "llm" else "kept_prefilter"] += 1
+                    counts[f"kept_{engine}"] += 1
                 else:
                     counts[f"drop:{info.get('category', '?')}"] += 1
                 for issue in info.get("text_issues", []):
@@ -256,7 +348,8 @@ def main() -> None:
                 processed += 1
                 pbar.update(1)
                 pbar.set_postfix(
-                    keep=counts["kept"] + counts["kept_prefilter"],
+                    keep=sum(v for k, v in counts.items()
+                             if k.startswith("kept_")),
                     drop=sum(v for k, v in counts.items() if k.startswith("drop:")),
                 )
     except KeyboardInterrupt:
@@ -264,13 +357,21 @@ def main() -> None:
     finally:
         pbar.close()
 
-    kept = counts["kept"] + counts["kept_prefilter"]
+    kept_by_engine = {k[len("kept_"):]: v for k, v in counts.items()
+                      if k.startswith("kept_")}
+    kept = sum(kept_by_engine.values())
     dropped = sum(v for k, v in counts.items() if k.startswith("drop:"))
     print()
     print("=" * 66)
     print(f"  Procesados:  {processed:,} en {time.time() - started:.0f}s")
-    print(f"  ✓ Conservados: {kept:,}"
-          f" (LLM: {counts['kept']:,}, prefilter: {counts['kept_prefilter']:,})")
+    print(f"  ✓ Conservados: {kept:,}")
+    for name, n in sorted(kept_by_engine.items(), key=lambda kv: -kv[1]):
+        print(f"      por {name:22} {n:,}")
+    if counts["reutilizadas"]:
+        print(f"  ♻ Reutilizadas: {counts['reutilizadas']:,} "
+              "(decididas antes; no costaron API)")
+    if chain.exhausted():
+        print(f"  ⚠ Proveedores agotados: {', '.join(chain.exhausted())}")
     print(f"  ⊘ Descartados: {dropped:,}")
     for key in sorted(k for k in counts if k.startswith("drop:")):
         print(f"      {key[5:]:24} {counts[key]:,}")

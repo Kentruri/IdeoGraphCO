@@ -13,6 +13,7 @@ import random
 import re
 import threading
 import time
+import urllib.request
 from datetime import datetime, timezone
 
 import feedparser
@@ -72,8 +73,13 @@ def _set_user_agent(url: str):
 # Rate limiting con backoff exponencial
 # ---------------------------------------------------------------------------
 
-_BASE_DELAY_MIN = 1.0
-_BASE_DELAY_MAX = 3.0
+# Cortesía por dominio: cada fuente la procesa UN solo worker de forma
+# secuencial, así que el espaciado real entre peticiones al mismo sitio es
+# este delay + el tiempo de descarga (1-3s). Con 0.4-1.2s el promedio queda
+# en ~2s efectivos por petición al mismo dominio: educado y 2.5x más rápido
+# que el rango anterior (1-3s), que era el costo dominante por artículo.
+_BASE_DELAY_MIN = 0.4
+_BASE_DELAY_MAX = 1.2
 _BACKOFF_FACTOR = 2.0
 _MAX_DELAY = 30.0
 
@@ -183,6 +189,33 @@ def _filter_political_urls(urls: list[str], url_filters: list[str]) -> list[str]
     return [url for url in urls if pattern.search(url)]
 
 
+# Timeout de la descarga de feeds. `feedparser.parse(url)` hace su propia
+# petición HTTP SIN timeout: un servidor que acepta la conexión y no responde
+# deja el hilo leyendo el socket para siempre. Con workers>1 eso congela el
+# ThreadPoolExecutor entero (diagnosticado con `sample`: un worker atascado en
+# SSL_read y el hilo principal esperando en as_completed — 13 h perdidas,
+# ago-2026). Por eso descargamos nosotros y le pasamos los bytes.
+_FEED_TIMEOUT_SECONDS = 20
+
+
+def _fetch_feed_bytes(feed_url: str) -> bytes | None:
+    """Descarga un feed con timeout explícito."""
+    request = urllib.request.Request(
+        feed_url,
+        headers={
+            "User-Agent": get_user_agent_for(feed_url),
+            "Accept": "application/rss+xml, application/xml, text/xml, */*",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=_FEED_TIMEOUT_SECONDS) as response:
+            return response.read(5_000_000)
+    except Exception as exc:  # noqa: BLE001 — cualquier fallo de red = sin feed
+        logger.warning("No se pudo descargar el feed %s (%s)",
+                       feed_url, type(exc).__name__)
+        return None
+
+
 def discover_urls_rss(feeds: list[str]) -> list[str]:
     """Descubre URLs desde feeds RSS."""
     urls: list[str] = []
@@ -190,7 +223,10 @@ def discover_urls_rss(feeds: list[str]) -> list[str]:
 
     for feed_url in feeds:
         try:
-            feed = feedparser.parse(feed_url)
+            raw = _fetch_feed_bytes(feed_url)
+            if raw is None:
+                continue
+            feed = feedparser.parse(raw)
             for entry in feed.entries:
                 url = entry.get("link", "")
                 if url and url not in seen:

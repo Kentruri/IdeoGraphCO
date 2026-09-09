@@ -21,6 +21,7 @@ Diseño:
 import json
 import logging
 import random
+import socket
 import threading
 import time
 from pathlib import Path
@@ -47,6 +48,16 @@ logger = logging.getLogger(__name__)
 
 # Los appends al JSONL y al filter-log se serializan (varias fuentes en
 # paralelo escriben al mismo archivo).
+# Timeout por defecto de TODO socket del proceso. Es la red de seguridad
+# contra bibliotecas que hacen peticiones sin timeout: basta una para que un
+# worker se quede leyendo un socket indefinidamente y, al esperarlo
+# `as_completed`, congele la recolección entera (pasó con feedparser:
+# 13 h paradas, ago-2026). Cada llamada con timeout propio lo sigue usando;
+# esto solo pone un techo donde no había ninguno.
+_SOCKET_TIMEOUT_SECONDS = 45
+if socket.getdefaulttimeout() is None:
+    socket.setdefaulttimeout(_SOCKET_TIMEOUT_SECONDS)
+
 _WRITE_LOCK = threading.Lock()
 
 # Hashes de contenido "en vuelo": reclamados por un worker que aún no llega a
@@ -155,6 +166,15 @@ def discover_candidate_urls(
         logger.info("  [%s] Crawl fallback: %d (%d nuevas)", name, len(crawl_urls), added)
 
     return unseen
+
+
+def _round_timeout_seconds(n_sources: int) -> float:
+    """Presupuesto de tiempo de una ronda, generoso pero finito.
+
+    Una fuente lenta tarda minutos (sitemaps grandes, muchos reintentos); el
+    techo solo existe para que una fuente COLGADA no pare la recolección.
+    """
+    return max(30 * 60.0, 90.0 * n_sources)
 
 
 def process_url(
@@ -587,6 +607,7 @@ def scrape_pipeline(
             by_source[name] = _run(name, conf)
     else:
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
 
         executor = ThreadPoolExecutor(max_workers=workers)
         try:
@@ -594,13 +615,25 @@ def scrape_pipeline(
                 executor.submit(_run, name, conf): name
                 for name, conf in selected.items()
             }
-            for future in as_completed(futures):
+            # Techo global de la ronda: si una fuente se cuelga pese a los
+            # timeouts, la ronda termina en vez de esperar para siempre. Lo
+            # ya recolectado está en disco y la siguiente ronda continúa.
+            round_budget = _round_timeout_seconds(len(selected))
+            for future in as_completed(futures, timeout=round_budget):
                 name = futures[future]
                 try:
                     by_source[name] = future.result()
                 except Exception:
                     logger.exception("Fuente %s falló", name)
                     by_source[name] = {"source_error": 1}
+        except FuturesTimeoutError:
+            done = len(by_source)
+            logger.error(
+                "La ronda excedió su presupuesto de %.0f min con %d/%d fuentes "
+                "completas: se cierra y la siguiente continúa (nada se pierde).",
+                round_budget / 60, done, len(selected),
+            )
+            executor.shutdown(wait=False, cancel_futures=True)
         except KeyboardInterrupt:
             # Sin esto, Ctrl+C esperaba a que TODAS las fuentes en cola
             # terminaran. Se cancela la cola; las que ya corren completan su

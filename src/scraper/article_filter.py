@@ -1,6 +1,7 @@
 """LLM filter — clasifica un texto en 5 categorías editoriales.
 
-Usa Gemini para clasificar:
+El proveedor concreto lo decide `ProviderChain` (Gemini, Claude por API,
+o el agente vía scripts/agent_filter.py). Categorías:
 - "political_article": política COLOMBIANA con impacto institucional (CONSERVAR)
 - "political_foreign": política de otro país, cubierta por prensa colombiana
 - "nonpolitical_article": artículo bien formado pero sin dimensión política
@@ -21,9 +22,11 @@ contenido internacional produce cada fuente.
 
 import json
 import logging
-import threading
-import time
 
+from src.scraper.llm_providers import (
+    GeminiProvider,
+    ProviderChain,
+)
 from src.scraper.prompts import FILTER_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -94,93 +97,21 @@ def parse_filter_response(response_text: str) -> dict | None:
         return None
 
 
-# Circuit breaker de cuota: tras N errores de cuota consecutivos se asume
-# agotamiento (429 sostenido / cuota diaria) y las llamadas siguientes fallan
-# rápido en vez de quemar ~180s en sleeps por URL. Los artículos afectados
-# quedan como filter_error (transitorio) y se reintentan en la próxima
-# corrida. Cualquier llamada exitosa re-arma el breaker.
-_QUOTA_LOCK = threading.Lock()
-_QUOTA_CONSECUTIVE = 0
-_QUOTA_BREAKER_THRESHOLD = 5
-_QUOTA_TRIPPED_LOGGED = False
+# El control de cuota y los reintentos viven ahora en ProviderChain
+# (src/scraper/llm_providers.py). Antes eran variables globales de este módulo,
+# lo que impedía tener dos proveedores con estados de cuota independientes:
+# agotar Gemini apagaba también al de relevo.
 
 
-def _quota_breaker_tripped() -> bool:
-    with _QUOTA_LOCK:
-        return _QUOTA_CONSECUTIVE >= _QUOTA_BREAKER_THRESHOLD
+def _as_chain(client, model: str, escalate_model: str | None) -> ProviderChain:
+    """Acepta una cadena ya construida o un cliente suelto de Gemini.
 
-
-def _record_quota_error() -> None:
-    global _QUOTA_CONSECUTIVE, _QUOTA_TRIPPED_LOGGED
-    with _QUOTA_LOCK:
-        _QUOTA_CONSECUTIVE += 1
-        if _QUOTA_CONSECUTIVE >= _QUOTA_BREAKER_THRESHOLD and not _QUOTA_TRIPPED_LOGGED:
-            _QUOTA_TRIPPED_LOGGED = True
-            logger.error(
-                "Cuota del LLM agotada (%d errores de cuota consecutivos): el "
-                "resto de la corrida fallará rápido como filter_error y se "
-                "reintentará en la próxima corrida.", _QUOTA_CONSECUTIVE,
-            )
-
-
-def _record_llm_success() -> None:
-    global _QUOTA_CONSECUTIVE, _QUOTA_TRIPPED_LOGGED
-    with _QUOTA_LOCK:
-        _QUOTA_CONSECUTIVE = 0
-        _QUOTA_TRIPPED_LOGGED = False
-
-
-def call_filter_with_retry(
-    client,
-    model: str,
-    text: str,
-    max_retries: int = 3,
-) -> str | None:
-    """Llama al LLM filter con retry y backoff exponencial.
-
-    Configuración para modelos 2.5 (reasoning):
-    - response_mime_type=application/json → JSON sin wrappers de markdown
-    - response_schema=_FILTER_RESPONSE_SCHEMA → estructura garantizada
-    - thinking_budget=0 → desactiva CoT interno (no necesario para esta tarea)
+    Los llamadores antiguos (pipeline, scripts/scraper) pasan un
+    `genai.Client`; se envuelve al vuelo para no tocarlos.
     """
-    if _quota_breaker_tripped():
-        return None
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model=model,
-                contents=text,
-                config={
-                    "system_instruction": FILTER_SYSTEM_PROMPT,
-                    "response_mime_type": "application/json",
-                    "response_schema": _FILTER_RESPONSE_SCHEMA,
-                    "thinking_config": {"thinking_budget": 0},
-                    "max_output_tokens": 512,
-                    "temperature": 0.0,
-                },
-            )
-            _record_llm_success()
-            return response.text
-        except Exception as e:
-            error_msg = str(e)
-            is_quota = "429" in error_msg or "quota" in error_msg.lower()
-            if is_quota:
-                _record_quota_error()
-                if _quota_breaker_tripped():
-                    return None
-                wait = 60
-                logger.warning("Rate limit. Esperando %ds...", wait)
-            else:
-                wait = 2 ** (attempt + 1)
-                logger.warning(
-                    "Error filter intento %d/%d: %s. Esperando %ds...",
-                    attempt + 1, max_retries, error_msg[:100], wait,
-                )
-            if attempt < max_retries - 1:
-                # Dormir solo si queda otro intento: el sleep tras el último
-                # era tiempo muerto puro.
-                time.sleep(wait)
-    return None
+    if isinstance(client, ProviderChain):
+        return client
+    return ProviderChain([GeminiProvider(client, model, escalate_model, 0.0)])
 
 
 def is_real_article(
@@ -204,9 +135,12 @@ def is_real_article(
         text: Texto del artículo.
         model: Modelo primario. Default flash-lite (barato).
         max_chars: Caracteres iniciales del texto a enviar al LLM.
-        escalate_model: Modelo a usar cuando el primario duda. Default
-            gemini-2.5-flash (~4x más caro pero más preciso). Pasa None
-            para desactivar el escalado.
+        escalate_model: Modelo a usar cuando el primario duda (~4x más
+            caro pero más preciso). Pasa None para desactivar el escalado.
+            Si `client` ya es un ProviderChain, este parámetro solo actúa
+            como interruptor: el modelo concreto lo aporta cada proveedor
+            (`FilterProvider.escalate_model`), porque el de relevo no tiene
+            por qué compartir catálogo con el primario.
         escalate_threshold: Si confidence < este valor, escala al
             escalate_model. Default 0.7.
 
@@ -217,8 +151,11 @@ def is_real_article(
             - primary_confidence (opcional): confianza del modelo primario
               cuando se escala (útil para diagnóstico)
     """
+    chain = _as_chain(client, model, escalate_model)
     truncated = text[:max_chars]
-    response = call_filter_with_retry(client, model, truncated)
+    response, provider_name = chain.call(
+        FILTER_SYSTEM_PROMPT, truncated, _FILTER_RESPONSE_SCHEMA, 512,
+    )
     if response is None:
         return False, None
 
@@ -227,6 +164,7 @@ def is_real_article(
         return False, None
 
     data["escalated"] = False
+    data["provider"] = provider_name
 
     # Escalado automático: si el modelo primario duda, re-llamar con el
     # modelo más caro y usar esa respuesta como definitiva.
@@ -241,13 +179,17 @@ def is_real_article(
         # espera, rachas de baja confianza duplicaban el ritmo efectivo.
         if rate_limiter is not None:
             rate_limiter.wait()
-        response_esc = call_filter_with_retry(client, escalate_model, truncated)
+        response_esc, provider_esc = chain.call(
+            FILTER_SYSTEM_PROMPT, truncated, _FILTER_RESPONSE_SCHEMA, 512,
+            escalated=True,
+        )
         if response_esc is not None:
             data_esc = parse_filter_response(response_esc)
             if data_esc is not None:
                 data = data_esc
                 data["escalated"] = True
                 data["primary_confidence"] = primary_conf
+                data["provider"] = provider_esc
 
     # Normalizar text_issues y aplicar los bloqueantes: un digest con varias
     # noticias, un preview de paywall o un texto truncado no sirven como
