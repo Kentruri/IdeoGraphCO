@@ -48,9 +48,13 @@ git add data/raw.dvc data/.gitignore
 git commit -m "data: corpus filtrado 41k + crudo" && git push
 
 # 4. Muestrear el gold y generar las tareas de los dos anotadores
-.venv/bin/python scripts/prepare_gold_set.py --annotators kevin NOMBRE --target 200 --overlap 60
+.venv/bin/python scripts/prepare_gold_set.py --annotators kevin juan --target 1200 --overlap 300
 git add annotation/ && git commit -m "gold: muestra v2 y tareas por anotador" && git push
 ```
+
+Decisión sep-2026: **1.200 artículos gold, 300 de solape** → 750 por persona
+(~12-18 h cada uno). Con 8 clases son ~150 por clase: intervalos de ±8 pp,
+suficientes para que las diferencias entre encoders del OE2 sean detectables.
 
 `prepare_gold_set.py` deja en `annotation/gold_set_v2_assignment.json` qué
 IDs son de solape y cuáles exclusivos de cada uno: es lo que después usa
@@ -75,7 +79,7 @@ LABEL_STUDIO_BASE_DATA_DIR=~/label-studio-data ~/label-studio-env/bin/label-stud
 # → http://localhost:8080, crear cuenta local
 
 # terminal 2 — crear el proyecto e importar las tareas propias
-.venv/bin/python scripts/labelstudio_setup.py --annotators kevin NOMBRE --user tu@correo --password tu_clave
+.venv/bin/python scripts/labelstudio_setup.py --annotators kevin juan --user tu@correo --password tu_clave
 ```
 
 Cada uno anota **solo el proyecto con su nombre**. La interfaz oculta la
@@ -99,7 +103,7 @@ git push
 **Ver el progreso de los dos** (funciona aunque uno no haya terminado):
 
 ```bash
-.venv/bin/python scripts/ingest_gold.py --books annotation/gold_set_v2_kevin.json annotation/gold_set_v2_NOMBRE.json
+.venv/bin/python scripts/ingest_gold.py --books annotation/gold_set_v2_kevin.json annotation/gold_set_v2_juan.json
 ```
 
 Reporta cuántos artículos anotó cada uno, cuántos del solape tienen ya dos
@@ -118,7 +122,7 @@ Anoten primero **~40 artículos del solape**, exporten, y corran la ingesta.
 ## Sesión de consenso (al terminar el solape)
 
 ```bash
-.venv/bin/python scripts/ingest_gold.py --books annotation/gold_set_v2_kevin.json annotation/gold_set_v2_NOMBRE.json
+.venv/bin/python scripts/ingest_gold.py --books annotation/gold_set_v2_kevin.json annotation/gold_set_v2_juan.json
 # → annotation/gold_set_v2_discrepancias.csv : una fila por desacuerdo
 
 # los dos juntos llenan la columna label_final, y luego:

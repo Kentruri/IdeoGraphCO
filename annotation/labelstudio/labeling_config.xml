@@ -1,54 +1,20 @@
 <View>
   <Header size="3" value="$title"/>
-  <View style="max-height:420px;overflow-y:auto;border:1px solid #ddd;padding:12px;border-radius:4px;background:#fafafa">
+  <View style="max-height:460px;overflow-y:auto;border:1px solid #ddd;padding:12px;border-radius:4px;background:#fafafa">
     <Text name="text" value="$text" granularity="paragraph"/>
   </View>
 
-  <Header size="4" value="Intensidad por eje (1 ausente … 5 dominante; vacío = sin decidir)"/>
-    <View style="display:flex;align-items:center;gap:12px;margin:2px 0">
-      <Header size="5" value="Personalismo — líder individual como eje central"/>
-      <Rating name="personalismo" toName="text" maxRating="5" icon="star" size="medium"/>
-    </View>
-    <View style="display:flex;align-items:center;gap:12px;margin:2px 0">
-      <Header size="5" value="Institucionalismo — instituciones y procesos formales"/>
-      <Rating name="institucionalismo" toName="text" maxRating="5" icon="star" size="medium"/>
-    </View>
-    <View style="display:flex;align-items:center;gap:12px;margin:2px 0">
-      <Header size="5" value="Populismo — dicotomía pueblo vs. élite"/>
-      <Rating name="populismo" toName="text" maxRating="5" icon="star" size="medium"/>
-    </View>
-    <View style="display:flex;align-items:center;gap:12px;margin:2px 0">
-      <Header size="5" value="Doctrinarismo — cuerpo ideológico como autoridad"/>
-      <Rating name="doctrinarismo" toName="text" maxRating="5" icon="star" size="medium"/>
-    </View>
-    <View style="display:flex;align-items:center;gap:12px;margin:2px 0">
-      <Header size="5" value="Soberanismo — autonomía nacional, rechazo a injerencia"/>
-      <Rating name="soberanismo" toName="text" maxRating="5" icon="star" size="medium"/>
-    </View>
-    <View style="display:flex;align-items:center;gap:12px;margin:2px 0">
-      <Header size="5" value="Globalismo — multilateralismo, normas globales"/>
-      <Rating name="globalismo" toName="text" maxRating="5" icon="star" size="medium"/>
-    </View>
-    <View style="display:flex;align-items:center;gap:12px;margin:2px 0">
-      <Header size="5" value="Conservadurismo — tradición, orden, autoridad"/>
-      <Rating name="conservadurismo" toName="text" maxRating="5" icon="star" size="medium"/>
-    </View>
-    <View style="display:flex;align-items:center;gap:12px;margin:2px 0">
-      <Header size="5" value="Progresismo — justicia social, derechos, reformas"/>
-      <Rating name="progresismo" toName="text" maxRating="5" icon="star" size="medium"/>
-    </View>
-
-  <Header size="4" value="CLASE DOMINANTE (obligatoria): el encuadre que ESTRUCTURA el argumento"/>
+  <Header size="4" value="CLASE DOMINANTE: el encuadre que ESTRUCTURA el argumento del texto"/>
   <Choices name="clase_dominante" toName="text" choice="single" required="true"
            requiredMessage="La clase dominante es obligatoria (metodología del anteproyecto)">
-      <Choice value="personalismo"/>
-      <Choice value="institucionalismo"/>
-      <Choice value="populismo"/>
-      <Choice value="doctrinarismo"/>
-      <Choice value="soberanismo"/>
-      <Choice value="globalismo"/>
-      <Choice value="conservadurismo"/>
-      <Choice value="progresismo"/>
+      <Choice value="personalismo" hint="líder individual como eje central"/>
+      <Choice value="institucionalismo" hint="instituciones y procesos formales"/>
+      <Choice value="populismo" hint="dicotomía pueblo vs. élite"/>
+      <Choice value="doctrinarismo" hint="cuerpo ideológico como autoridad"/>
+      <Choice value="soberanismo" hint="autonomía nacional, anti-injerencia"/>
+      <Choice value="globalismo" hint="multilateralismo, normas globales"/>
+      <Choice value="conservadurismo" hint="tradición, orden, autoridad"/>
+      <Choice value="progresismo" hint="justicia social, derechos, reformas"/>
   </Choices>
 
   <Header size="4" value="Notas (dudas, empates, razones — alimentan la sesión de consenso)"/>
