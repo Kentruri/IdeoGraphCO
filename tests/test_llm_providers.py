@@ -661,6 +661,34 @@ def test_filter_does_not_finish_while_the_collector_is_still_scraping():
     assert not runner.should_finish(minimo - 1, collector_active=True)
 
 
+def test_session_and_weekly_limits_have_independent_switches(monkeypatch):
+    """Un solo interruptor obligaba a elegir mal.
+
+    La sesión se renueva en horas (esperar es correcto); la semanal en días
+    (esperar deja el proceso vivo días y suelta caffeinate). Con una sola
+    variable, "no pares en la sesión" implicaba "duerme una semana", y
+    "para en la semanal" implicaba "para al primer corte de sesión".
+    """
+    runner = _load_filter_runner()
+    # Por defecto: la sesión espera, la semanal para.
+    assert runner.STOP_ON_SESSION_LIMIT is False
+    assert runner.WEEKLY_WAIT is False
+
+    monkeypatch.setenv("FILTER_STOP_ON_SESSION_LIMIT", "1")
+    assert _load_filter_runner().STOP_ON_SESSION_LIMIT is True
+    monkeypatch.delenv("FILTER_STOP_ON_SESSION_LIMIT")
+
+    monkeypatch.setenv("FILTER_WEEKLY_WAIT", "1")
+    assert _load_filter_runner().WEEKLY_WAIT is True
+
+
+def test_old_stop_on_limit_env_still_understood(monkeypatch):
+    # Un plist ya instalado con el nombre viejo no debe cambiar de conducta
+    # en silencio al actualizar el runner.
+    monkeypatch.setenv("FILTER_STOP_ON_LIMIT", "1")
+    assert _load_filter_runner().STOP_ON_SESSION_LIMIT is True
+
+
 def test_stop_on_limit_is_opt_in_and_off_by_default(monkeypatch):
     """Agotar la cuota puede significar «espera» o «termina», según se pida.
 
@@ -670,10 +698,10 @@ def test_stop_on_limit_is_opt_in_and_off_by_default(monkeypatch):
     primer límite, se quedaría parado sin que nadie lo note.
     """
     runner = _load_filter_runner()
-    assert runner.STOP_ON_LIMIT is False
+    assert runner.STOP_ON_SESSION_LIMIT is False
 
     for valor, esperado in (("", False), ("0", False), ("1", True),
                             ("si", True)):
-        monkeypatch.setenv("FILTER_STOP_ON_LIMIT", valor)
+        monkeypatch.setenv("FILTER_STOP_ON_SESSION_LIMIT", valor)
         recargado = _load_filter_runner()
-        assert recargado.STOP_ON_LIMIT is esperado, valor
+        assert recargado.STOP_ON_SESSION_LIMIT is esperado, valor

@@ -186,10 +186,18 @@ MIN_CORPUS = int(os.environ.get("FILTER_MIN_CORPUS", "40000"))
 COLLECT_EXTRA = int(os.environ.get("FILTER_COLLECT_EXTRA", "0"))
 COLLECT_POLL = float(os.environ.get("FILTER_COLLECT_POLL", "1800"))
 MAX_STALE_COLLECTS = int(os.environ.get("FILTER_MAX_STALE_COLLECTS", "4"))
-# Con esto activo, agotar la cuota TERMINA el servicio en vez de dormir
-# hasta la renovación. Para corridas acotadas: "trabaja lo que te quede
-# de sesión y para", en lugar de seguir indefinidamente.
-STOP_ON_LIMIT = os.environ.get("FILTER_STOP_ON_LIMIT", "") not in ("", "0")
+# Dos límites distintos, dos reacciones distintas. Meterlos en un solo
+# interruptor obligaba a elegir entre parar demasiado pronto (al primer
+# corte de sesión) o dormir días con el proceso vivo.
+#
+#   sesión (se renueva en horas)  → por defecto ESPERA y sigue
+#   semanal (se renueva en días)  → por defecto PARA
+STOP_ON_SESSION_LIMIT = os.environ.get(
+    # nombre viejo aceptado por compatibilidad con plists ya instalados
+    "FILTER_STOP_ON_SESSION_LIMIT",
+    os.environ.get("FILTER_STOP_ON_LIMIT", ""),
+) not in ("", "0")
+WEEKLY_WAIT = os.environ.get("FILTER_WEEKLY_WAIT", "") not in ("", "0")
 
 # `claude -p "/usage"` se resuelve en el cliente: 0 turnos, 0 tokens, coste 0.
 # Por eso se puede consultar antes de cada tanda sin gastar nada de cuota.
@@ -548,16 +556,17 @@ def main() -> int:
                     wait = 6 * 3600
                 log(f"🛑 LÍMITE SEMANAL AL {pct:.0f}% (tope {WEEKLY_STOP_PCT:.0f}%). "
                     "Dejo de consumir para que te quede semana.")
-                if STOP_ON_LIMIT:
-                    caffeinate(False)
-                    log(f"   corpus filtrado: {build_corpus(verbose=False):,}")
-                    log("   retomar: ./scripts/filter_service.sh start")
-                    return 0
-                if wait > 0:
+                if WEEKLY_WAIT and wait > 0:
                     sleep_interruptible(
                         wait, "espero a que renueve la semana",
                         may_sleep_machine=True)
                     continue
+                caffeinate(False)
+                cuando = f" Renueva {resets:%d/%m %H:%M}." if resets else ""
+                log(f"   corpus filtrado: {build_corpus(verbose=False):,}"
+                    f" artículos.{cuando}")
+                log("   retomar: ./scripts/filter_service.sh start")
+                return 0     # 0 a propósito: KeepAlive no debe resucitarlo
             elif pct >= WEEKLY_STOP_PCT - 10:
                 log(f"   semanal al {pct:.0f}% (paro al {WEEKLY_STOP_PCT:.0f}%)")
 
@@ -588,7 +597,7 @@ def main() -> int:
             # Un límite de uso NO es motivo para rendirse: se renueva solo.
             # El servicio duerme hasta entonces y sigue, las veces que haga
             # falta. Solo se detiene si terminó el corpus o si se le pide.
-            if STOP_ON_LIMIT:
+            if STOP_ON_SESSION_LIMIT:
                 caffeinate(False)
                 kept = build_corpus(verbose=False)
                 cuando = (f" Renueva ~{datetime.now() + timedelta(seconds=reset_in):%H:%M}."

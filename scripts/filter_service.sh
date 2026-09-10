@@ -30,7 +30,7 @@ cmd_install() {
   # exacta de renovación, el runner la usa y despierta antes.
   local model="opus" cooldown="60" quota_wait="16200" stalls="3"
   local transient_wait="300" weekly_stop="80" min_corpus="40000"
-  local collect_extra="0" stop_on_limit=""
+  local collect_extra="0" stop_on_limit="" weekly_wait=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --model)      model="$2"; shift 2 ;;
@@ -40,7 +40,9 @@ cmd_install() {
       --weekly-stop) weekly_stop="$2"; shift 2 ;;
       --min-corpus)  min_corpus="$2"; shift 2 ;;
       --collect-extra) collect_extra="$2"; shift 2 ;;
-      --stop-on-limit) stop_on_limit="1"; shift ;;
+      --stop-on-session) stop_on_limit="1"; shift ;;
+      --stop-on-limit)   stop_on_limit="1"; shift ;;   # alias antiguo
+      --weekly-wait)     weekly_wait="1"; shift ;;
       --max-stalls) stalls="$2"; shift 2 ;;
       *) die "opción desconocida: $1" ;;
     esac
@@ -88,7 +90,8 @@ cmd_install() {
     <key>FILTER_WEEKLY_STOP_PCT</key><string>${weekly_stop}</string>
     <key>FILTER_MIN_CORPUS</key><string>${min_corpus}</string>
     <key>FILTER_COLLECT_EXTRA</key><string>${collect_extra}</string>
-    <key>FILTER_STOP_ON_LIMIT</key><string>${stop_on_limit}</string>
+    <key>FILTER_STOP_ON_SESSION_LIMIT</key><string>${stop_on_limit}</string>
+    <key>FILTER_WEEKLY_WAIT</key><string>${weekly_wait}</string>
     <key>FILTER_MAX_STALLS</key><string>${stalls}</string>
     <key>HOME</key><string>${HOME}</string>
   </dict>
@@ -119,13 +122,18 @@ PLIST_EOF
   echo "  modelo      $model"
   echo "  claude      $claude_bin"
   echo "  pausa       ${cooldown}s entre tandas"
-  if [[ -n "$stop_on_limit" ]]; then
-    echo "  sin cuota   TERMINA el servicio (no espera la renovacion)"
+  if [[ -n "$weekly_wait" ]]; then
+    echo "  al ${weekly_stop}% sem. espera a que renueve la semana"
   else
-    echo "  sin cuota   espera $(( quota_wait / 3600 ))h $(( quota_wait % 3600 / 60 ))min (o hasta la hora que anuncie el aviso)"
+    echo "  al ${weekly_stop}% sem. TERMINA el servicio"
+  fi
+  if [[ -n "$stop_on_limit" ]]; then
+    echo "  sin sesion  TERMINA el servicio (no espera la renovacion)"
+  else
+    echo "  sin sesion  espera y sigue (hasta la hora que anuncie el aviso)"
   fi
   echo "  pasajero    ${transient_wait}s si es sobrecarga"
-  echo "  SEMANAL     para al ${weekly_stop}% y espera a que renueve la semana"
+
   echo "  mínimo      ${min_corpus} filtrados; si no llega, arranca el scraping solo"
   if [[ "$collect_extra" != "0" ]]; then
     echo "  reposición  ${collect_extra} crudos nuevos (cantidad fija)"
@@ -215,7 +223,8 @@ Filtrado del corpus como servicio de macOS (launchd).
   ./scripts/filter_service.sh install [--model opus|sonnet] [--cooldown S]
                                       [--quota-wait S] [--transient-wait S]
                                       [--weekly-stop PCT] [--min-corpus N]
-                                      [--collect-extra N] [--stop-on-limit]
+                                      [--collect-extra N] [--stop-on-session]
+                                      [--weekly-wait]
   ./scripts/filter_service.sh start       arrancar / reanudar
   ./scripts/filter_service.sh stop        pausar
   ./scripts/filter_service.sh status      progreso y estado
