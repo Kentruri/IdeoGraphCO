@@ -7,7 +7,7 @@ y ritmos distintos:
 |-----|--------|-------|---------|
 | Código, guías, codebook | KB | **git** (GitHub) | cambia a diario, se revisa, se hace `blame` |
 | Corpus (`data/raw/*.jsonl`) | 630 MB | **DVC → Google Drive** | git no aguanta binarios grandes; DVC guarda en git solo un hash |
-| Anotaciones del gold | pocos MB | **git** (`annotation/`) | son el resultado del trabajo humano: deben quedar versionadas y auditables |
+| Anotaciones del gold | pocos MB | **Label Studio compartido** (+ export a `annotation/` al cerrar el solape y al final) | una sola base de datos, sincronía inmediata, sin ceremonia de exportar/subir en cada sesión |
 
 ## El principio que manda: independencia
 
@@ -18,13 +18,17 @@ Ese α solo vale si ninguno vio la etiqueta del otro antes de poner la suya.
 Por eso el diseño **no** es "una pantalla donde los dos ven lo que va marcando
 el otro". Es:
 
-- cada uno anota **su** proyecto en **su** Label Studio local;
-- los dos pueden ver en cualquier momento **cuánto** lleva el otro (progreso);
-- las **etiquetas** del otro se ven solo cuando ambos terminaron el solape, en
-  la sesión de consenso — que es justo el paso que el protocolo prevé.
+- **un solo Label Studio para los dos**, corriendo en el Mac de Kevin (que ya
+  está encendido 24/7 para el scraping), al que Juan entra por Tailscale;
+- cada uno anota **su** proyecto (`Gold set — kevin`, `Gold set — juan`); el
+  bloque común está en ambos;
+- los dos ven en cualquier momento **cuánto** lleva el otro (la portada muestra
+  el avance de cada proyecto); las **etiquetas** del otro se miran solo cuando
+  ambos terminaron el solape, en la sesión de consenso.
 
-Un servidor compartido de Label Studio con los dos dentro daría sincronía en
-tiempo real, pero mataría el α. No compensa.
+Label Studio (edición gratuita) no impide abrir el proyecto del otro: la
+independencia del α depende de **no hacerlo**. Es una regla de trabajo, no un
+candado.
 
 ## Puesta en marcha (una vez)
 
@@ -47,9 +51,15 @@ git push
 git add data/raw.dvc data/.gitignore
 git commit -m "data: corpus filtrado 41k + crudo" && git push
 
-# 4. Muestrear el gold y generar las tareas de los dos anotadores
+# 4. Muestrear el gold y generar las tareas — YA HECHO (commit c6de08b)
 .venv/bin/python scripts/prepare_gold_set.py --annotators kevin juan --target 1200 --overlap 300
-git add annotation/ && git commit -m "gold: muestra v2 y tareas por anotador" && git push
+
+# 5. Label Studio como servicio permanente + proyectos de los dos
+./scripts/labelstudio_service.sh install --public-url http://<mac-de-kevin>:8080 && ./scripts/labelstudio_service.sh start
+.venv/bin/python scripts/labelstudio_setup.py --annotators kevin juan --replace --user kevin@cloudnonic.com --password '...'
+
+# 6. Tailscale: instalar (tailscale.com/download), iniciar sesión, e invitar a Juan
+#    desde https://login.tailscale.com/admin/users → Invite external users
 ```
 
 Decisión sep-2026: **1.200 artículos gold, 300 de solape** → 750 por persona
@@ -70,48 +80,41 @@ mkdir -p ~/.config/ideographco && mv ~/Downloads/gdrive-sa.json ~/.config/ideogr
 .venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$HOME/.config/ideographco/gdrive-sa.json"
 .venv/bin/dvc pull                       # trae el corpus desde Drive
 
-# Label Studio va en SU propio entorno, no en el venv del proyecto
-python3 -m venv ~/label-studio-env && ~/label-studio-env/bin/pip install label-studio
 ```
 
-### Los dos: cargar el proyecto en Label Studio
+Para **anotar**, Juan no necesita el corpus ni Label Studio en su máquina:
+solo Tailscale y un navegador. El `dvc pull` es para cuando toque entrenar.
 
-```bash
-# terminal 1 — el servidor, se deja corriendo
-LABEL_STUDIO_BASE_DATA_DIR=~/label-studio-data ~/label-studio-env/bin/label-studio start --port 8080
-# → http://localhost:8080, crear cuenta local
+1. Instalar Tailscale (tailscale.com/download) y aceptar la invitación de Kevin.
+2. Abrir el enlace de invitación de Label Studio que le pasa Kevin → crear
+   usuario (correo + contraseña, viven solo en ese servidor).
+3. Entrar a `http://<mac-de-kevin>:8080` → proyecto **Gold set — juan**.
 
-# terminal 2 — crear el proyecto e importar las tareas propias
-.venv/bin/python scripts/labelstudio_setup.py --annotators kevin juan --user tu@correo --password tu_clave
-```
+### Un solo servidor, dos proyectos
 
-Cada uno anota **solo el proyecto con su nombre**. La interfaz oculta la
-fuente del artículo a propósito.
+Los proyectos los crea Kevin una vez con `labelstudio_setup.py` (arriba, paso
+5) en el servidor compartido. Juan no carga nada: entra y su proyecto ya está.
+La interfaz oculta la fuente del artículo a propósito, y en cada archivo de
+tareas **las 300 del bloque común van primero**: anotar en orden es empezar
+por el solape.
 
 ## El ciclo de trabajo (cada sesión)
 
-```bash
-# antes de empezar
-git pull
+Entrar a `http://<mac-de-kevin>:8080`, abrir **tu** proyecto, anotar. Nada
+más: la base de datos es una y está en el Mac de Kevin, así que lo que anota
+uno lo ve el otro (como avance) al instante.
 
-# anotar en Label Studio; al terminar la sesión: Export → JSON (completo, no JSON-MIN)
-# guardarlo como annotation/gold_set_v2_<tu_nombre>.json  (sobrescribe el anterior)
+**Ver el progreso de los dos**: la portada de Label Studio muestra, por
+proyecto, cuántas tareas están completadas. Ese número es público para ambos;
+las etiquetas no se miran.
 
-# publicar
-git add annotation/gold_set_v2_<tu_nombre>.json
-git commit -m "gold: <tu_nombre> +N artículos"
-git push
-```
+**Requisito**: el Mac de Kevin encendido y con Tailscale activo. Si Juan ve
+"no se puede conectar", es eso — no un fallo de su lado.
 
-**Ver el progreso de los dos** (funciona aunque uno no haya terminado):
-
-```bash
-.venv/bin/python scripts/ingest_gold.py --books annotation/gold_set_v2_kevin.json annotation/gold_set_v2_juan.json
-```
-
-Reporta cuántos artículos anotó cada uno, cuántos del solape tienen ya dos
-etiquetas y el α **provisional** sobre esos. No mira las etiquetas del otro
-por ti: solo el número.
+**Copia de seguridad**: al cerrar el bloque de solape y al terminar, Kevin
+exporta cada proyecto (`Export → JSON`, el completo) a
+`annotation/gold_set_v2_<nombre>.json` y lo sube a git. Es lo que consume
+`ingest_gold.py` y lo que queda versionado para el informe.
 
 ## Ronda de calibración antes del gold completo
 
