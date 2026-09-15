@@ -41,6 +41,33 @@ from src.core.paths import ROOT  # noqa: E402
 PROJECT_PREFIX = "Gold set"
 
 
+def session_from_token(base_url: str, token: str) -> requests.Session:
+    """Sesión autenticada con un token de API en vez de usuario y contraseña.
+
+    Evita tener que teclear (o pasar por el historial del shell) la clave de
+    la cuenta. El token legacy vive en la tabla `authtoken_token` de la propia
+    instalación y se activa en Organization > API Tokens.
+    """
+    session = requests.Session()
+    session.headers["Authorization"] = f"Token {token}"
+    try:
+        response = session.get(f"{base_url}/api/projects/",
+                               params={"page_size": 1}, timeout=20)
+    except requests.RequestException as exc:
+        raise SystemExit(
+            f"✗ No responde Label Studio en {base_url} ({type(exc).__name__})\n"
+            "  Arráncalo:  ./scripts/labelstudio_service.sh start"
+        ) from exc
+    if response.status_code == 401:
+        raise SystemExit(
+            "✗ El token no autentica. Los tokens 'legacy' están desactivados "
+            "por defecto en Label Studio 1.23+:\n"
+            "  actívalos en Organization → API Tokens → Legacy tokens."
+        )
+    response.raise_for_status()
+    return session
+
+
 def login(base_url: str, email: str, password: str) -> requests.Session:
     """Sesión autenticada contra Label Studio."""
     session = requests.Session()
@@ -76,11 +103,13 @@ def login(base_url: str, email: str, password: str) -> requests.Session:
 
 
 def _headers(session: requests.Session, base_url: str) -> dict:
-    return {
-        "X-CSRFToken": session.cookies.get("csrftoken"),
-        "Referer": base_url,
-        "Content-Type": "application/json",
-    }
+    headers = {"Referer": base_url, "Content-Type": "application/json"}
+    # Con token no hay cookie de sesión y Django no exige CSRF; enviar un
+    # X-CSRFToken vacío hace que lo rechace.
+    csrf = session.cookies.get("csrftoken")
+    if csrf:
+        headers["X-CSRFToken"] = csrf
+    return headers
 
 
 def existing_projects(session: requests.Session, base_url: str) -> dict[str, int]:
@@ -183,6 +212,11 @@ def main() -> None:
         help="Contraseña (o LABEL_STUDIO_PASSWORD)",
     )
     parser.add_argument(
+        "--token", type=str, default=os.environ.get("LABEL_STUDIO_TOKEN"),
+        help="Token de API (o LABEL_STUDIO_TOKEN). Alternativa a "
+             "--user/--password: no expone la clave de la cuenta",
+    )
+    parser.add_argument(
         "--with-scales", action="store_true",
         help="Añade los 8 ratings de intensidad 1-5 además de la clase "
              "dominante (por defecto solo la clase: 1 decisión por artículo)",
@@ -193,10 +227,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not args.user or not args.password:
+    if not args.token and (not args.user or not args.password):
         raise SystemExit(
-            "✗ Faltan credenciales. Pasa --user y --password, o exporta\n"
-            "  LABEL_STUDIO_USERNAME y LABEL_STUDIO_PASSWORD."
+            "✗ Faltan credenciales. Pasa --token (recomendado), o bien\n"
+            "  --user y --password / LABEL_STUDIO_USERNAME y LABEL_STUDIO_PASSWORD."
         )
 
     base_url = args.url.rstrip("/")
@@ -218,7 +252,8 @@ def main() -> None:
             f"{' '.join(args.annotators)} --version {args.version}"
         )
 
-    session = login(base_url, args.user, args.password)
+    session = (session_from_token(base_url, args.token) if args.token
+               else login(base_url, args.user, args.password))
     known = existing_projects(session, base_url)
     config = labelstudio.build_labeling_config(with_scales=args.with_scales)
 
