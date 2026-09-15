@@ -100,21 +100,33 @@ def build_labeling_config(with_scales: bool = False) -> str:
             f"{ratings}\n"
         )
 
-    return f"""<View>
-  <Header size="3" value="$title"/>
-  <View style="max-height:460px;overflow-y:auto;border:1px solid #ddd;padding:12px;border-radius:4px;background:#fafafa">
-    <Text name="text" value="$text" granularity="paragraph"/>
-  </View>
-{ratings_block}
-  <Header size="4" value="CLASE DOMINANTE: el encuadre que ESTRUCTURA el argumento del texto"/>
-  <Choices name="clase_dominante" toName="text" choice="single" required="true"
-           requiredMessage="La clase dominante es obligatoria (metodología del anteproyecto)">
-{choices}
-  </Choices>
+    # Dos columnas: el artículo ocupa la altura de la pantalla y las opciones
+    # quedan fijas al lado. Antes el texto vivía en una caja de 460 px con
+    # scroll y las opciones debajo: con artículos de 3.000 caracteres de
+    # mediana eso obligaba a leer por una mirilla, y es justo la decisión que
+    # no conviene tomar con información parcial.
+    return f"""<View style="display:flex;gap:24px;align-items:flex-start">
 
-  <Header size="4" value="Notas (dudas, empates, razones — alimentan la sesión de consenso)"/>
-  <TextArea name="notes" toName="text" rows="3" maxSubmissions="1" editable="true"
-            placeholder="Opcional: por qué dudaste, qué clases empataban, etc."/>
+  <View style="flex:1 1 62%;min-width:0">
+    <Header size="3" value="$title"/>
+    <View style="max-height:80vh;overflow-y:auto;border:1px solid #ddd;padding:16px 20px;border-radius:4px;background:#fafafa;line-height:1.6;font-size:15px">
+      <Text name="text" value="$text" granularity="paragraph"/>
+    </View>
+  </View>
+
+  <View style="flex:1 1 38%;min-width:280px;position:sticky;top:8px">
+{ratings_block}
+    <Header size="4" value="CLASE DOMINANTE: el encuadre que ESTRUCTURA el argumento del texto"/>
+    <Choices name="clase_dominante" toName="text" choice="single" required="true"
+             requiredMessage="La clase dominante es obligatoria (metodología del anteproyecto)">
+{choices}
+    </Choices>
+
+    <Header size="4" value="Notas (dudas, empates, razones — alimentan la sesión de consenso)"/>
+    <TextArea name="notes" toName="text" rows="3" maxSubmissions="1" editable="true"
+              placeholder="Opcional: por qué dudaste, qué clases empataban, etc."/>
+  </View>
+
 </View>"""
 
 
