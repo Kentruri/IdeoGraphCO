@@ -19,7 +19,7 @@ Por eso el diseño **no** es "una pantalla donde los dos ven lo que va marcando
 el otro". Es:
 
 - **un solo Label Studio para los dos**, corriendo en el Mac de Kevin (que ya
-  está encendido 24/7 para el scraping), al que Juan entra por Tailscale;
+  está encendido 24/7 para el scraping), al que Juan entra por una URL pública (túnel de Cloudflare);
 - cada uno anota **su** proyecto (`Gold set — kevin`, `Gold set — juan`); el
   bloque común está en ambos;
 - los dos ven en cualquier momento **cuánto** lleva el otro (la portada muestra
@@ -58,9 +58,17 @@ git commit -m "data: corpus filtrado 41k + crudo" && git push
 ./scripts/labelstudio_service.sh install --public-url http://<mac-de-kevin>:8080 && ./scripts/labelstudio_service.sh start
 .venv/bin/python scripts/labelstudio_setup.py --annotators kevin juan --replace --user kevin@cloudnonic.com --password '...'
 
-# 6. Tailscale: instalar (tailscale.com/download), iniciar sesión, e invitar a Juan
-#    desde https://login.tailscale.com/admin/users → Invite external users
+# 6. Túnel público para que Juan llegue al servidor (sin cuenta ni admin)
+brew install cloudflared
+./scripts/tunnel_service.sh install && ./scripts/tunnel_service.sh start
+./scripts/tunnel_service.sh url      # imprime la URL y el enlace de invitación
 ```
+
+**La URL cambia en cada arranque del túnel.** Es el precio de no usar cuenta
+de Cloudflare. Tras un reinicio del Mac, `./scripts/tunnel_service.sh url`
+da la nueva y hay que pasársela a Juan; el servicio reconfigura Label Studio
+solo (sin `LABEL_STUDIO_HOST` correcto, Django rechaza los formularios por
+CSRF y las invitaciones apuntan a localhost).
 
 Decisión sep-2026: **1.200 artículos gold, 300 de solape** → 750 por persona
 (~12-18 h cada uno). Con 8 clases son ~150 por clase: intervalos de ±8 pp,
@@ -82,13 +90,16 @@ mkdir -p ~/.config/ideographco && mv ~/Downloads/gdrive-sa.json ~/.config/ideogr
 
 ```
 
-Para **anotar**, Juan no necesita el corpus ni Label Studio en su máquina:
-solo Tailscale y un navegador. El `dvc pull` es para cuando toque entrenar.
+Para **anotar**, Juan no necesita el corpus, ni Label Studio, ni instalar
+nada: solo un navegador. El `dvc pull` es para cuando toque entrenar.
 
-1. Instalar Tailscale (tailscale.com/download) y aceptar la invitación de Kevin.
-2. Abrir el enlace de invitación de Label Studio que le pasa Kevin → crear
-   usuario (correo + contraseña, viven solo en ese servidor).
-3. Entrar a `http://<mac-de-kevin>:8080` → proyecto **Gold set — juan**.
+1. Abrir el enlace de invitación que le pasa Kevin
+   (`https://….trycloudflare.com/user/signup/?token=…`) y crear su usuario
+   (correo + contraseña, viven solo en ese servidor).
+2. Entrar y abrir el proyecto **Gold set — juan**.
+
+Requisito: el Mac de Kevin encendido, con Label Studio y el túnel arriba. Si
+Juan ve "no se puede conectar", es eso.
 
 ### Un solo servidor, dos proyectos
 
@@ -100,7 +111,7 @@ por el solape.
 
 ## El ciclo de trabajo (cada sesión)
 
-Entrar a `http://<mac-de-kevin>:8080`, abrir **tu** proyecto, anotar. Nada
+Entrar a la URL del túnel, abrir **tu** proyecto, anotar. Nada
 más: la base de datos es una y está en el Mac de Kevin, así que lo que anota
 uno lo ve el otro (como avance) al instante.
 
@@ -108,8 +119,9 @@ uno lo ve el otro (como avance) al instante.
 proyecto, cuántas tareas están completadas. Ese número es público para ambos;
 las etiquetas no se miran.
 
-**Requisito**: el Mac de Kevin encendido y con Tailscale activo. Si Juan ve
-"no se puede conectar", es eso — no un fallo de su lado.
+**Requisito**: el Mac de Kevin encendido, con Label Studio y el túnel
+arriba (`./scripts/labelstudio_service.sh status` y
+`./scripts/tunnel_service.sh status`).
 
 **Copia de seguridad**: al cerrar el bloque de solape y al terminar, Kevin
 exporta cada proyecto (`Export → JSON`, el completo) a
