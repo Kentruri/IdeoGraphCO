@@ -31,6 +31,7 @@ LS_LABEL = "com.ideographco.labelstudio"
 
 _URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 _tunnel: subprocess.Popen | None = None
+_caffeinate: subprocess.Popen | None = None
 
 
 def log(message: str) -> None:
@@ -38,9 +39,27 @@ def log(message: str) -> None:
 
 
 def _shutdown(*_):
-    if _tunnel and _tunnel.poll() is None:
-        _tunnel.terminate()
+    for proc in (_tunnel, _caffeinate):
+        if proc and proc.poll() is None:
+            proc.terminate()
     sys.exit(0)
+
+
+def keep_awake() -> subprocess.Popen | None:
+    """Impide que el Mac se duerma mientras el servidor esté publicado.
+
+    Este equipo tiene `sleep 1` (un minuto de inactividad) tanto con batería
+    como enchufado, así que sin esto el servidor compartido se vuelve
+    inalcanzable en cuanto Kevin se levanta de la silla: los servicios siguen
+    "arriba" para launchd, pero la máquina está dormida.
+
+    Se suelta al parar el túnel, para no dejar el equipo despierto de balde.
+    """
+    try:
+        return subprocess.Popen(["/usr/bin/caffeinate", "-is"])
+    except OSError as exc:
+        log(f"   ⚠ no pude lanzar caffeinate ({exc}); el Mac podrá dormirse")
+        return None
 
 
 def current_ls_host() -> str | None:
@@ -96,6 +115,11 @@ def main() -> int:
     URL_FILE.write_text(url + "\n", encoding="utf-8")
     log(f"URL pública: {url}")
 
+    global _caffeinate
+    _caffeinate = keep_awake()
+    if _caffeinate:
+        log("Mac mantenido despierto mientras el túnel esté arriba")
+
     # Solo se reinicia Label Studio si el host cambió: reinstalarlo siempre
     # cortaría la sesión de quien esté anotando en ese momento.
     if current_ls_host() != url:
@@ -110,6 +134,8 @@ def main() -> int:
         log("Label Studio ya apuntaba a esta URL")
 
     _tunnel.wait()
+    if _caffeinate and _caffeinate.poll() is None:
+        _caffeinate.terminate()
     log("cloudflared terminó")
     return 1      # KeepAlive lo relanza y se pedirá una URL nueva
 
