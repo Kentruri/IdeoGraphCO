@@ -1,0 +1,19 @@
+{
+ "repo_id": "Kentruri/ideographco-corpus",
+ "revision": "3eee29b1009bb6c111687044d5cc37b82173ae91",
+ "updated_at": "2026-09-15T03:44:22+00:00",
+ "files": {
+  "articles.jsonl.gz": {
+   "articles": 44687,
+   "bytes_raw": 211086194,
+   "bytes_gz": 70828446,
+   "sha256_raw": "57231531be50aa81e2ab1e3165b1d11120d55fe93dfadcba99faab2f102ace66"
+  },
+  "articles_unfiltered.jsonl.gz": {
+   "articles": 100659,
+   "bytes_raw": 441064896,
+   "bytes_gz": 147096855,
+   "sha256_raw": "9ad4838b677870deb592205228ef54228d85f76541b0cf93281a3d0452277262"
+  }
+ }
+}

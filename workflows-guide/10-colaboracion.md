@@ -6,7 +6,7 @@ y ritmos distintos:
 | Qué | Tamaño | Canal | Por qué |
 |-----|--------|-------|---------|
 | Código, guías, codebook | KB | **git** (GitHub) | cambia a diario, se revisa, se hace `blame` |
-| Corpus (`data/raw/*.jsonl`) | 630 MB | **DVC → Google Drive** | git no aguanta binarios grandes; DVC guarda en git solo un hash |
+| Corpus (`data/raw/*.jsonl`) | 218 MB comprimido | **Hugging Face** (repo privado) | git no aguanta binarios grandes; en git solo va `data/corpus.lock` con la revisión |
 | Anotaciones del gold | pocos MB | **Label Studio compartido** (+ export a `annotation/` al cerrar el solape y al final) | una sola base de datos, sincronía inmediata, sin ceremonia de exportar/subir en cada sesión |
 
 ## El principio que manda: independencia
@@ -40,14 +40,12 @@ git add scripts src tests workflows-guide .claude .gitignore CLAUDE.md requireme
 git commit -m "feat: filtrado con agente, servicio launchd y guías"
 git push
 
-# 2. Remoto DVC en Google Drive — YA HECHO (carpeta IdeoGraphCO-dataset).
-#    La autenticación es por cuenta de servicio: ver 09-compartir-datos.md,
-#    sección Setup. Cada máquina apunta a su copia de la clave con --local:
-.venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$HOME/.config/ideographco/gdrive-sa.json"
+# 2. Corpus en Hugging Face — YA HECHO (Kentruri/ideographco-corpus, privado).
+#    Cada investigador pone su propio token en .env; ver 09-compartir-datos.md.
 
-# 3. Congelar y subir el corpus (dvc add escribe data/raw en .gitignore solo)
-.venv/bin/dvc add data/raw
-.venv/bin/dvc push                       # sin navegador: usa la cuenta de servicio
+# 3. Subir el corpus y anclar su revisión
+.venv/bin/python scripts/dataset_sync.py push -m "corpus v1"
+git add data/corpus.lock
 git add data/raw.dvc data/.gitignore
 git commit -m "data: corpus filtrado 41k + crudo" && git push
 
@@ -83,10 +81,8 @@ IDs son de solape y cuáles exclusivos de cada uno: es lo que después usa
 ```bash
 git clone git@github.com:Kentruri/IdeoGraphCO.git && cd IdeoGraphCO
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-# la clave gdrive-sa.json se la pasa Kevin por un canal privado (NO está en el repo)
-mkdir -p ~/.config/ideographco && mv ~/Downloads/gdrive-sa.json ~/.config/ideographco/
-.venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$HOME/.config/ideographco/gdrive-sa.json"
-.venv/bin/dvc pull                       # trae el corpus desde Drive
+echo "HF_TOKEN=hf_..." >> .env        # su propio token de Hugging Face
+.venv/bin/python scripts/dataset_sync.py pull --only-filtered
 
 ```
 
@@ -154,9 +150,9 @@ que es lo que entra a `prepare_splits.py` como conjunto de prueba.
 ## Cuando el corpus cambie (por ejemplo, al terminar el scraping)
 
 ```bash
-.venv/bin/dvc add data/raw && .venv/bin/dvc push
-git add data/raw.dvc && git commit -m "data: corpus 54k" && git push
-# el otro:  git pull && .venv/bin/dvc pull
+.venv/bin/python scripts/dataset_sync.py push -m "corpus 54k"
+git add data/corpus.lock && git commit -m "data: corpus 54k" && git push
+# el otro:  git pull && .venv/bin/python scripts/dataset_sync.py pull
 ```
 
 El gold ya muestreado **no se vuelve a muestrear**: sus IDs están en
@@ -165,8 +161,8 @@ entrenamiento aunque el corpus crezca.
 
 ## Lo que no hay que hacer
 
-- **`git add .`** antes de que `dvc add data/raw` haya escrito el `.gitignore`.
-  Son 630 MB y GitHub los rechaza (o peor, los acepta y el repo queda inservible).
+- **`git add .`** a lo bruto: `data/raw/` está ignorado, pero son 652 MB y
+  un `git add -f` los metería en el repo y lo dejaría inservible.
 - **Enseñarse las etiquetas** del solape antes de que los dos hayan terminado.
   Invalida el α y, con él, el producto P1.3.
 - **Anotar el proyecto del otro** en Label Studio. Cada nombre, su proyecto.

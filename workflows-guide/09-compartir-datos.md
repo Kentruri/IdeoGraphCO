@@ -1,100 +1,69 @@
-# 9 — Compartir los datos (DVC + Google Drive)
+# 9 — Compartir el corpus (Hugging Face)
 
-El corpus pesa ~180 MB, demasiado para git. DVC guarda en git solo un archivo
-de hashes (`data/raw.dvc`, ~100 bytes) y el contenido real va a Google Drive.
+El corpus pesa 652 MB en disco y 218 MB comprimido: demasiado para git. Vive
+en un **repositorio de dataset privado de Hugging Face**, y git guarda solo
+`data/corpus.lock` (unos bytes) con la revisión exacta que corresponde a cada
+commit del código.
 
-## Setup (una sola vez)
+> **Por qué no Google Drive + DVC**, que era el plan inicial: Google bloqueó
+> el cliente OAuth por defecto de DVC ("Esta aplicación está bloqueada"), y la
+> alternativa —una cuenta de servicio— la prohíbe la política de la
+> organización del usuario (`iam.managed.disableServiceAccountKeyCreation`).
+> Hugging Face da repos privados gratis, versionados con git-lfs, sin ninguno
+> de esos obstáculos.
 
-Google **bloqueó el cliente OAuth por defecto de DVC** (sep-2026: "Esta
-aplicación está bloqueada"), así que la autorización por navegador ya no
-sirve. Se usa una **cuenta de servicio**: una identidad de Google Cloud con
-su propia clave JSON, sin navegador, sin caducidad, igual para los dos.
+## Setup (una vez, cada investigador)
 
-**Quien configura (Kevin), en https://console.cloud.google.com:**
-
-1. Selector de proyecto (arriba) → *Nuevo proyecto* → nombre `IdeoGraphCO`.
-2. *APIs y servicios → Biblioteca* → buscar **Google Drive API** → *Habilitar*.
-3. *APIs y servicios → Credenciales → Crear credenciales → Cuenta de servicio*
-   → nombre `dvc-ideographco` → *Crear y continuar* → sin rol → *Listo*.
-4. Clic en la cuenta creada → pestaña *Claves* → *Agregar clave → Crear clave
-   nueva → JSON*. Se descarga un `.json`: **es la llave del corpus, no va a
-   git ni a un chat público**.
-5. Copiar el correo de la cuenta (`dvc-ideographco@ideographco-….iam.gserviceaccount.com`)
-   y en Drive **compartir la carpeta `IdeoGraphCO-dataset` con ese correo como
-   Editor**. Sin este paso la cuenta no ve la carpeta.
-
-**Cada investigador, en su máquina** (la clave la comparte Kevin por un canal
-privado, nunca por el repo):
+1. Cuenta en [huggingface.co](https://huggingface.co).
+2. Token de escritura en *Settings → Access Tokens → New token → Write*.
+3. Añadirlo a `.env` (ignorado por git):
 
 ```bash
-mkdir -p ~/.config/ideographco && mv ~/Downloads/ideographco-*.json ~/.config/ideographco/gdrive-sa.json
-.venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$HOME/.config/ideographco/gdrive-sa.json"
+echo "HF_TOKEN=hf_..." >> .env
 ```
 
-`--local` escribe en `.dvc/config.local`, que está ignorado por git: la ruta
-(y la clave) se quedan en tu máquina. El modo cuenta-de-servicio ya viene en
-`.dvc/config` para los dos.
+Kevin añade a Juan como colaborador en
+*huggingface.co/datasets/Kentruri/ideographco-corpus → Settings → Collaborators*.
 
-Los archivos subidos quedan a nombre de la cuenta de servicio (cuota propia
-de 15 GB, sobra): no borres el proyecto de Google Cloud mientras el corpus
-viva ahí.
-
-## Subir datos (cuando el corpus cambia)
+## Traer el corpus
 
 ```bash
-.venv/bin/dvc add data/raw          # calcula hashes → crea/actualiza data/raw.dvc
-.venv/bin/dvc push                  # sube el contenido a Drive
-git add data/raw.dvc .gitignore
-git commit -m "data: corpus 49k artículos"
-git push
+.venv/bin/python scripts/dataset_sync.py pull                  # la revisión del lock
+.venv/bin/python scripts/dataset_sync.py pull --only-filtered  # solo articles.jsonl (71 MB)
+.venv/bin/python scripts/dataset_sync.py pull --latest         # lo más reciente
 ```
 
-Igual para `data/silver` y `data/processed` cuando existan.
+`pull` respeta lo que ya esté en disco; `--force` lo sobrescribe. Descomprime
+a un `.part` y renombra al final, así que un corte no deja el corpus a medias.
 
-## Bajar datos (el otro investigador, o una máquina nueva)
+## Subir cuando el corpus cambie
 
 ```bash
-git clone <repo> && cd IdeoGraphCO
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt     # incluye dvc y dvc-gdrive
-dvc pull                            # trae el contenido real desde Drive
+.venv/bin/python scripts/dataset_sync.py push -m "corpus tras filtrar el resto"
+git add data/corpus.lock && git commit -m "data: corpus actualizado" && git push
 ```
 
-Después, cada vez que quiera actualizarse:
+Ese commit del lock es lo que ancla «este código va con esta versión del
+corpus». Sin él, `pull` no sabe qué revisión traer.
+
+## Ver qué hay
 
 ```bash
-git pull      # trae los .dvc actualizados
-dvc pull      # trae el contenido nuevo
+.venv/bin/python scripts/dataset_sync.py status
 ```
 
-## Comandos de diagnóstico
-
-```bash
-dvc status -c          # ¿hay algo local sin subir al remoto?
-dvc remote list        # ¿qué remoto está configurado?
-dvc data status        # ¿cambió algo en data/ desde el último add?
-```
-
-## Alternativa rápida (sin DVC)
-
-Para mostrar unos ejemplos al director, no montes nada:
-
-```bash
-# muestra en CSV, abrible en Excel
-.venv/bin/python scripts/inspect_corpus.py --category opinion --export muestra.csv
-
-# el corpus entero comprimido (~40 MB: el JSONL comprime muy bien)
-gzip -c data/raw/articles_unfiltered.jsonl > corpus.jsonl.gz
-```
+Compara lo que hay en el repo remoto con lo que tienes en disco.
 
 ## Nota legal
 
-El corpus contiene el texto completo de artículos con derechos de autor.
-Compartirlo entre los investigadores y el director para uso académico está
-bien. **Publicarlo abiertamente** (GitHub, HuggingFace) es otra cosa:
-consúltalo con el director. La práctica habitual en NLP para prensa es
-distribuir las **URLs e IDs**, no el texto — y este pipeline lo permite,
-porque con las URLs y `scripts/scraper.py` cualquiera reconstruye el corpus.
+El corpus contiene texto completo de artículos con derechos de autor. El repo
+es **privado** y es para uso académico de los investigadores y el director.
+Publicarlo abiertamente es otra cosa: consúltalo con el director. La práctica
+habitual en NLP para prensa es distribuir **URLs e IDs**, no el texto — y este
+pipeline lo permite, porque con las URLs cualquiera reconstruye el corpus.
 
-Ver también [docs/data-versioning.md](../docs/data-versioning.md) para el
-detalle de cómo funciona DVC y qué carpetas versiona.
+## Alternativa rápida (para enseñar unos ejemplos)
+
+```bash
+.venv/bin/python scripts/inspect_corpus.py --filtered --category opinion --export muestra.csv
+```
