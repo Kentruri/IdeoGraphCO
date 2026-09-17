@@ -61,3 +61,6 @@ wandb/
 # vivo del filtrado. Sin esto, un `git add .` intenta subir ~600 MB.
 data/raw/
 data/agent_batches/
+
+# Paquetes para anotadores: se regeneran con scripts/package_for_annotator.py
+annotation/paquetes/
