@@ -39,6 +39,10 @@ COOLDOWN = float(os.environ.get("FILTER_COOLDOWN", "60"))
 TANDA_TIMEOUT = float(os.environ.get("FILTER_TANDA_TIMEOUT", "5400"))
 # Cada cuánto el log dice que sigue vivo mientras el agente trabaja.
 HEARTBEAT = float(os.environ.get("FILTER_HEARTBEAT", "120"))
+# Sin un solo artículo decidido en este tiempo, la tanda se da por
+# encallada aunque el proceso siga vivo. Un lote son ~11 min, así que
+# 40 absorbe una pausa por cuota sin matar trabajo sano.
+STALL_TIMEOUT = float(os.environ.get("FILTER_STALL_TIMEOUT", "2400"))
 
 PROMPT = """Procesa una tanda completa del corpus de IdeoGraphCO aplicando la skill codebook-filtro.
 
@@ -459,17 +463,39 @@ def run_tanda(claude_bin: str) -> tuple[int, str]:
     except OSError as exc:
         return 1, f"no pude lanzar claude: {exc}"
 
-    deadline = time.monotonic() + TANDA_TIMEOUT
-    last_beat = time.monotonic()
+    # Relojes de PARED, no monotónicos: en macOS `time.monotonic()` se detiene
+    # mientras el equipo duerme, así que un techo de 90 min no llegaba a
+    # cumplirse nunca y una tanda encallada siguió viva 4 h sin avanzar.
+    deadline = datetime.now() + timedelta(seconds=TANDA_TIMEOUT)
+    last_beat = datetime.now()
+    # Una tanda puede estar VIVA y no avanzar (la sesión de claude se queda
+    # esperando algo). El techo por tiempo no lo detecta a tiempo; este sí.
+    stall_since = datetime.now()
+    last_decided = status().get("decided", -1)
+
     while proc.poll() is None:
         time.sleep(2)
-        if time.monotonic() - last_beat >= HEARTBEAT:
-            last_beat = time.monotonic()
+        now = datetime.now()
+
+        if (now - last_beat).total_seconds() >= HEARTBEAT:
+            last_beat = now
             snapshot = status()
             if snapshot:
-                log(f"   · trabajando… {snapshot['decided']:,} decididos "
+                decided = snapshot["decided"]
+                log(f"   · trabajando… {decided:,} decididos "
                     f"({snapshot['pct']:.2f}%) · lote {snapshot['batch_seq'] - 1}")
-        if time.monotonic() > deadline:
+                if decided != last_decided:
+                    last_decided = decided
+                    stall_since = now
+
+        stalled = (now - stall_since).total_seconds()
+        if stalled >= STALL_TIMEOUT:
+            proc.kill()
+            proc.wait(timeout=30)
+            return 125, (f"la tanda dejó de avanzar durante "
+                         f"{stalled / 60:.0f} min (sin decidir un artículo)")
+
+        if now > deadline:
             proc.kill()
             proc.wait(timeout=30)
             return 124, f"la tanda superó el techo de {TANDA_TIMEOUT / 60:.0f} min"
