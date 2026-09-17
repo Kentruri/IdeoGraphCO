@@ -17,6 +17,7 @@ Uso:
 """
 
 import argparse
+import csv
 import json
 import sys
 import zipfile
@@ -107,6 +108,77 @@ detallados, usa el codebook que acordaste con Kevin.
 """
 
 
+# Excel corta las celdas a 32.767 caracteres; Google Sheets, a 50.000. El
+# texto se escribe ENTERO: recortarlo haría que el anotador decidiera sobre un
+# artículo mutilado sin saberlo. Solo se avisa de cuántos afectaría en Excel.
+_EXCEL_CELL_LIMIT = 32767
+_SHEETS_CELL_LIMIT = 50000
+
+CSV_COLUMNS = ["n", "id", "titulo", "texto", "clase", "notas"]
+
+_CSV_README = """Anotacion del gold set - IdeoGraphCO
+=====================================
+
+{n} articulos de prensa politica colombiana.
+
+QUE HAY QUE HACER
+-----------------
+Para cada fila, escribir en la columna "clase" UNA de estas ocho:
+
+  populismo           institucionalismo
+  personalismo        doctrinarismo
+  soberanismo         globalismo
+  conservadurismo     progresismo
+
+Es la clase que ESTRUCTURA el argumento del texto, no la que se menciona de
+pasada. Si dudas o dos clases empatan, escribelo en la columna "notas": esos
+casos se revisan despues.
+
+No aparece el medio ni la seccion del articulo: es a proposito, para juzgar
+por el texto y no por su origen.
+
+COMO ABRIRLO
+------------
+Recomendado: Google Sheets (Archivo > Importar > Subir). Cabe todo.
+
+Si lo abres en Excel, {excel} articulos muy largos se veran cortados (Excel no
+admite celdas de mas de 32.767 caracteres). En Google Sheets no pasa.
+
+No hace falta terminarlo de una vez: se puede ir llenando por partes. Las
+filas estan en orden variado a proposito, asi que si solo llenas las primeras
+200 siguen siendo una muestra representativa.
+
+COMO ENTREGARLO
+---------------
+Descargar como CSV (Archivo > Descargar > .csv) y mandarselo a Kevin.
+
+NO cambiar el orden de las filas ni la columna "id": es lo que permite
+enlazar cada respuesta con su articulo.
+"""
+
+
+def _write_csv(articles: list[dict], path: Path) -> tuple[int, int]:
+    """Escribe el CSV de anotacion. Devuelve (filas, textos largos)."""
+    largos = 0
+    # utf-8-sig: sin el BOM, Excel destroza los acentos al abrir el CSV.
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        for n, article in enumerate(articles, start=1):
+            texto = article.get("text", "") or ""
+            if len(texto) > _EXCEL_CELL_LIMIT:
+                largos += 1
+            writer.writerow({
+                "n": n,
+                "id": article["id"],
+                "titulo": (article.get("title") or "").strip(),
+                "texto": texto,
+                "clase": "",
+                "notas": "",
+            })
+    return len(articles), largos
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Empaqueta el gold set para un anotador")
@@ -116,6 +188,10 @@ def main() -> None:
                         help="Solo los primeros N artículos")
     parser.add_argument("--input", type=str, default=None,
                         help="JSONL del gold (default: annotation/gold_set_<v>.jsonl)")
+    parser.add_argument("--format", choices=["labelstudio", "csv"],
+                        default="labelstudio",
+                        help="labelstudio: tareas + interfaz (recomendado). "
+                             "csv: una hoja de calculo para llenar a mano")
     args = parser.parse_args()
 
     src = Path(args.input) if args.input else \
@@ -130,10 +206,27 @@ def main() -> None:
     if args.limit:
         articles = articles[:args.limit]
 
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.format == "csv":
+        csv_path = OUT_DIR / f"anotacion_{args.annotator}_{args.version}.csv"
+        filas, largos = _write_csv(articles, csv_path)
+        readme = OUT_DIR / f"LEEME_{args.annotator}.txt"
+        readme.write_text(_CSV_README.format(n=f"{filas:,}", excel=largos),
+                          encoding="utf-8")
+        print(f"✓ {csv_path.relative_to(ROOT)}  "
+              f"({csv_path.stat().st_size/1e6:.1f} MB · {filas:,} filas)")
+        print(f"✓ {readme.relative_to(ROOT)}")
+        if largos:
+            print(f"\n  ⚠ {largos} artículos pasan de 32.767 caracteres: Excel los")
+            print("    cortaría. En Google Sheets caben enteros — dile que lo abra ahí.")
+        print("\n  Cuando te devuelva el CSV lleno:")
+        print("    .venv/bin/python scripts/ingest_gold.py --books <archivo.csv>")
+        return
+
     tasks = labelstudio.build_tasks(articles)
     config = labelstudio.build_labeling_config()
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     zip_path = OUT_DIR / f"anotacion_{args.annotator}_{args.version}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr(f"{args.annotator}_tasks.json",

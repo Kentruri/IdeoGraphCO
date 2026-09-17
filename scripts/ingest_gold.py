@@ -41,14 +41,59 @@ AXES = IDEOLOGY_CLASSES
 DOMINANT_COL = "clase_dominante"
 
 
+def read_csv_book(path: Path) -> dict[str, dict]:
+    """Lee un CSV de anotación (el de scripts/package_for_annotator.py --format csv).
+
+    Columnas mínimas: `id` y `clase`. `notas` es opcional. Es el formato que
+    sale de Google Sheets o Excel al descargar como CSV, que es como anota
+    quien no quiere instalar Label Studio.
+
+    Tolera los destrozos habituales de una hoja de cálculo: BOM en la
+    cabecera, espacios, mayúsculas, y la clase escrita con acentos o en otro
+    caso ("Populismo", "PROGRESISMO").
+    """
+    annotations: dict[str, dict] = {}
+    # utf-8-sig se come el BOM que Excel añade; con utf-8 la primera columna
+    # se llamaría "\ufeffn" y no se encontraría `id`.
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        campos = {(c or "").strip().lower(): c for c in (reader.fieldnames or [])}
+        if "id" not in campos:
+            raise ValueError(
+                f"{path}: falta la columna 'id'. Columnas encontradas: "
+                f"{reader.fieldnames}")
+        col_clase = campos.get("clase") or campos.get(DOMINANT_COL)
+        if col_clase is None:
+            raise ValueError(
+                f"{path}: falta la columna 'clase' (o '{DOMINANT_COL}')")
+        col_notas = campos.get("notas") or campos.get("notes")
+
+        for row in reader:
+            article_id = (row.get(campos["id"]) or "").strip()
+            if not article_id:
+                continue
+            raw = (row.get(col_clase) or "").strip().lower()
+            dominant = raw if raw in CLASS_TO_IDX else None
+            notes = (row.get(col_notas) or "").strip() if col_notas else ""
+            annotations[article_id] = {
+                "dominant": dominant,
+                "scores": dict.fromkeys(AXES),
+                "notes": notes,
+            }
+    return annotations
+
+
 def read_book(path: Path) -> dict[str, dict]:
-    """Lee un libro anotado: Excel (.xlsx) o export JSON de Label Studio.
+    """Lee un libro anotado: CSV, Excel (.xlsx) o export JSON de Label Studio.
 
     Returns:
         {id: {"dominant": str|None, "scores": {eje: int|None}, "notes": str}}
     """
-    if path.suffix.lower() == ".json":
+    suffix = path.suffix.lower()
+    if suffix == ".json":
         return labelstudio.parse_export(path)
+    if suffix == ".csv":
+        return read_csv_book(path)
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     if "Articulos" not in wb.sheetnames:
         raise ValueError(f"{path}: no tiene hoja 'Articulos'")
@@ -134,8 +179,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Ingesta del gold anotado + Krippendorff α")
     parser.add_argument(
         "--books", nargs="+", required=True,
-        help="Libros anotados, uno por anotador: .xlsx (Excel) o .json "
-             "(export JSON de Label Studio). Se pueden mezclar.",
+        help="Libros anotados, uno por anotador: .csv (hoja de cálculo), "
+             ".xlsx (Excel) o .json (export de Label Studio). Se mezclan.",
     )
     parser.add_argument(
         "--jsonl", type=str, default=None,
