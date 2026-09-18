@@ -133,6 +133,23 @@ titular + cuerpo → K chunks de 512 tokens (sliding_window, stride=384, max K=1
   α ≥ 0.8 (`scripts/ingest_gold.py` + `src/agents/gold/agreement.py`);
   discrepancias por consenso. Salida con `label_source: human*`.
 
+## Aislamiento del gold (no negociable)
+
+Los **1.301 artículos** de `annotation/gold_set_v2_ids.json` son el conjunto
+de PRUEBA del OE3. Dos reglas, ambas con test de regresión
+(`tests/test_gold_isolation.py`):
+
+- **No reciben etiqueta silver.** `scripts/label.py` los excluye por defecto
+  leyendo ese archivo de IDs; contaminarlos haría que el modelo se evaluara
+  contra el juicio de otro modelo en vez de contra el humano (métricas
+  circulares). Hay que pasar `--allow-gold-in-silver` para saltarse la
+  guarda.
+- **No entran a train/val.** `scripts/prepare_splits.py` los manda al split
+  de test y aplica además una guardia anti-fuga por near-duplicados.
+
+Ninguna de las dos fugas da error en tiempo de ejecución: producen números
+buenos y falsos.
+
 ## Pipeline de datos
 
 ```

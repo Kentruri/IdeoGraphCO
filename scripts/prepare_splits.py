@@ -129,10 +129,21 @@ def main() -> None:
             "Gold humano: %d artículos fusionados desde %s", len(gold_ids), gold_labeled_path,
         )
     elif args.allow_silver_test:
-        legacy_ids_path = ROOT / "annotation" / "gold_set_v1_ids.json"
-        if legacy_ids_path.exists():
-            with open(legacy_ids_path, encoding="utf-8") as f:
-                gold_ids = set(json.load(f)) & set(by_id)
+        # Se busca primero el gold VIGENTE (v2). Antes solo se miraba el v1,
+        # así que con un gold v2 muestreado el test se armaba con artículos
+        # que NO eran los reservados, y los 1.301 del gold podían acabar en
+        # entrenamiento.
+        for ids_path in (ROOT / "annotation" / "gold_set_v2_ids.json",
+                         ROOT / "annotation" / "gold_set_v1_ids.json"):
+            if not ids_path.exists():
+                continue
+            with open(ids_path, encoding="utf-8") as f:
+                data = json.load(f)
+            ids = data if isinstance(data, list) else data.get("ids", [])
+            gold_ids = set(ids) & set(by_id)
+            logger.info("IDs del gold reservados desde %s: %d",
+                        ids_path.name, len(gold_ids))
+            break
         logger.warning(
             "=" * 70 + "\n"
             "  MODO DESARROLLO: el test usará etiquetas SILVER (LLM), no humanas.\n"

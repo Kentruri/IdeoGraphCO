@@ -205,6 +205,7 @@ def label_news_file(
     force: bool = False,
     max_articles: int | None = None,
     rate_limit_delay: float = 4.5,
+    exclude_ids: set[str] | None = None,
 ) -> Path:
     """Etiqueta un archivo de noticias con Gemini como juez.
 
@@ -218,6 +219,11 @@ def label_news_file(
         force: Si True, re-etiqueta todo desde cero.
         max_articles: Límite de artículos a etiquetar (None = todos).
         rate_limit_delay: Segundos entre requests (4.5s = ~13 RPM, bajo el límite de 15).
+        exclude_ids: artículos que NO deben recibir etiqueta silver. Es el
+            gold: son el conjunto de PRUEBA, y darles una etiqueta de LLM
+            los contaminaría — el modelo acabaría evaluándose contra el
+            juicio de otro modelo en vez de contra el humano, y las métricas
+            del OE3 serían circulares.
 
     Returns:
         Path al archivo etiquetado.
@@ -271,9 +277,14 @@ def label_news_file(
     )
     logger.info("Rate limit: %.1fs entre requests (~%.0f RPM)", rate_limit_delay, 60 / rate_limit_delay)
 
+    if exclude_ids:
+        logger.info("Excluidos del silver: %d artículos del gold (conjunto de prueba)",
+                    len(exclude_ids))
+
     system_prompt = build_system_prompt(include_examples=True)
     labeled_count = 0
     error_count = 0
+    excluded_count = 0
     consecutive_failures = 0
 
     pbar = tqdm(
@@ -311,6 +322,14 @@ def label_news_file(
                     logger.warning("Línea %d corrupta (%s), saltando.", i + 1, e)
                     error_count += 1
                     _write_cursor(output_path, i + 1)
+                    continue
+
+                if exclude_ids and raw.get("id") in exclude_ids:
+                    # Avanza el cursor sin escribir: el artículo queda fuera
+                    # del silver, no "pendiente para la próxima".
+                    excluded_count += 1
+                    _write_cursor(output_path, i + 1)
+                    pbar.update(1)
                     continue
 
                 # Truncar textos muy largos (ahorro de tokens)
@@ -399,7 +418,8 @@ def label_news_file(
         pbar.close()
 
     logger.info(
-        "Etiquetado completado: %d exitosos, %d errores. Salida: %s",
-        labeled_count, error_count, output_path,
+        "Etiquetado completado: %d exitosos, %d errores, %d excluidos (gold). "
+        "Salida: %s",
+        labeled_count, error_count, excluded_count, output_path,
     )
     return output_path
