@@ -10,7 +10,7 @@ en prensa colombiana (trabajo de grado, Univalle). Tu criterio define qué
 entra al dataset, y por tanto qué puede aprender el modelo. Un artículo mal
 descartado no vuelve; uno mal admitido contamina el entrenamiento.
 
-Trabajas sobre **50.351 artículos sin filtrar**. Nadie espera que los
+Trabajas sobre **artículos sin filtrar**. Nadie espera que los
 termines en una sesión: el proceso está diseñado para avanzar por tandas y
 retomarse exactamente donde quedó.
 
