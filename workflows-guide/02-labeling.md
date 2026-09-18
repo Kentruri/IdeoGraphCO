@@ -38,6 +38,71 @@ python scripts/label.py --input data/raw/articles.jsonl
 - **Legacy**: silver viejo sin `label` se lee vía argmax al vuelo
   (deprecado, con warning por empates) — re-etiquetar con `--force`.
 
+## Ensemble de jueces (recomendado para el silver definitivo)
+
+Varios LLM de **familias distintas** ven el mismo artículo y una regla de
+consenso decide. Todo vive en `src/agents/silver/`:
+
+| módulo | qué hace |
+|---|---|
+| `judges.py` | catálogo de jueces (`gemini`, `gemini-lite`, `claude`, `claude-sonnet`) y el prompt (codebook propio o externo) |
+| `consensus.py` | la regla: `unanimous` o `majority`. **El desacuerdo no se descarta**: se conserva la etiqueta mayoritaria con `status` y `agreement`, y `accepted` dice si pasa la regla |
+| `ensemble.py` | recorre el corpus, excluye el gold, escribe el silver y `*.verdicts.jsonl` (lo que dijo cada juez: la trazabilidad) |
+| `calibration.py` | contra el gold humano: precisión por juez, α entre jueces, y si el acuerdo **predice** el acierto |
+
+### Por qué no descartar el desacuerdo
+
+Quitar los artículos donde los jueces discrepan elimina los casos difíciles.
+El silver queda más fácil que la realidad y que el gold (que no tiene ese
+filtro): el modelo parece mejor en validación de lo que es en test, y las
+clases ambiguas se vacían. Por eso el silver lleva `consensus.status` y
+`consensus.agreement` en cada registro: quien entrena filtra por `accepted`
+o pondera por `agreement`, pero la decisión queda explícita y reversible.
+
+### Por qué familias distintas
+
+Dos copias del mismo modelo se equivocan igual y coinciden también cuando
+fallan. Su acuerdo mide consistencia, no corrección. `build_judges` avisa si
+todos los jueces son de la misma familia.
+
+### Orden de trabajo
+
+```bash
+# 0. (cuando exista) el codebook del anotador como prompt
+#    --codebook docs/codebook_juan.md   ← se le añade el bloque de formato JSON solo
+
+# 1. Calibrar sobre el gold YA ANOTADO (unas 600 llamadas, no 24.000)
+python scripts/silver_calibrate.py run --judges gemini,claude --sample 300
+python scripts/silver_calibrate.py report --rule majority
+python scripts/silver_calibrate.py report --rule unanimous     # gratis: sin LLM
+
+# 2. Con la regla justificada por el report, el silver de verdad
+python scripts/silver_ensemble.py --judges gemini,claude --rule majority --max-articles 12000
+```
+
+El report dice `P(correcto | unánime)` frente a `P(correcto | discrepancia)`.
+Si la brecha es grande, la regla filtra errores; si es pequeña, solo filtra
+dificultad y conviene `majority` con ponderación en vez de descartar.
+
+El juez `claude` necesita `ANTHROPIC_API_KEY` en `.env` y
+`pip install anthropic`. Sin él, `gemini,gemini-lite` funciona pero es la
+misma familia: el aviso saldrá, y con razón.
+
+### Registro silver del ensemble
+
+Además de los campos del juez simple:
+
+```json
+"label_source": "silver-ensemble",
+"judge_models": ["gemini-2.5-flash", "claude-haiku-4-5-20251001"],
+"consensus": {"label": "populismo", "status": "unanime", "accepted": true,
+              "agreement": 1.0, "votes": {"populismo": 2}, "n_judges": 2, "n_valid": 2}
+```
+
+`status` ∈ `unanime · mayoria · discrepancia · unico · sin_veredicto`. Los
+`sin_veredicto` no entran al silver (van a `.failed`); los `discrepancia` con
+empate tampoco tienen etiqueta y solo quedan en `verdicts.jsonl`.
+
 ## Componentes
 
 - [scripts/label.py](../scripts/label.py) — CLI
