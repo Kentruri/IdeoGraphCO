@@ -65,6 +65,40 @@ Dos copias del mismo modelo se equivocan igual y coinciden también cuando
 fallan. Su acuerdo mide consistencia, no corrección. `build_judges` avisa si
 todos los jueces son de la misma familia.
 
+### El agente de Claude Code como juez (sin API key)
+
+Igual que en el filtrado: el agente lee lotes, escribe una clase por artículo
+y sus votos se acumulan junto a los de Gemini.
+
+```bash
+.venv/bin/python scripts/silver_agent.py next --reset-session   # 1ª vez de la sesión
+# …el agente lee data/silver/agent_batches/lote_NNN.txt y escribe las decisiones…
+.venv/bin/python scripts/silver_agent.py ingest --batch N --decisions <archivo>
+.venv/bin/python scripts/silver_agent.py next                   # siguientes
+```
+
+Con `Skill(skill="codebook-silver")` y `Agent(subagent_type="juez-silver")`.
+
+**Los votos se acumulan, el consenso se deriva.** Ese es el cambio que permite
+usar al agente: va por lotes dentro de una sesión, mientras Gemini recorre el
+corpus de corrido. Exigir que voten a la vez lo dejaba fuera. Ahora los dos
+escriben en `data/silver/verdicts.jsonl` (una línea por voto) y el silver sale
+del cruce:
+
+```bash
+.venv/bin/python scripts/silver_ensemble.py --judges gemini --max-articles 12000
+.venv/bin/python scripts/silver_agent.py build --rule majority
+.venv/bin/python scripts/silver_agent.py status
+```
+
+`build` no gasta ninguna llamada: relee los votos guardados. Así se puede
+probar otra regla, o añadir un tercer juez meses después, sin re-preguntar a
+los que ya votaron.
+
+Si un juez vota dos veces el mismo artículo gana el voto **más reciente**, y
+sigue contando una sola vez — un voto viejo y uno nuevo del mismo juez no
+pueden formar "mayoría" entre ellos.
+
 ### Orden de trabajo
 
 ```bash

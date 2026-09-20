@@ -5,7 +5,9 @@ les dicta; lo que se prueba es la lógica que decide qué entra al silver y
 con qué marca.
 """
 
+import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,8 @@ import pytest
 from src.agents.silver import calibration, consensus, ensemble
 from src.agents.silver.judge import AXIS_NAMES, DOMINANT_KEY
 from src.agents.silver.judges import OUTPUT_FORMAT_BLOCK, Verdict, system_prompt_from
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def v(judge: str, dominant: str | None, ok: bool = True, family: str | None = None,
@@ -167,19 +171,23 @@ def test_flujo_completo_escribe_silver_y_veredictos(tmp_path):
         [gemini, claude], input_path=_corpus(tmp_path, ids), output_path=out,
         rule="majority", force=True, progress=False)
 
+    from src.agents.silver.verdicts import load_verdicts
+
     silver = {r["id"]: r for r in _leer(out)}
-    verdicts = {r["id"]: r for r in _leer(ensemble.verdicts_path_for(out))}
+    # El almacén es compartido: una línea por VOTO, no por artículo.
+    verdicts = load_verdicts(ensemble.verdicts_path_for(out))
 
     # a: unánime; c: unánime; b: empate (sin etiqueta → no entra al silver);
     # d: solo gemini (UNICO → entra, no aceptado)
     assert set(silver) == {"a", "c", "d"}
-    assert set(verdicts) == {"a", "b", "c", "d"}, "los veredictos se guardan TODOS"
+    assert set(verdicts) == {"a", "b", "c", "d"}, "los votos se guardan TODOS"
     assert silver["a"]["consensus"]["status"] == consensus.UNANIME
     assert silver["a"]["label_source"] == ensemble.LABEL_SOURCE
     assert silver["a"]["label_idx"] is not None
     assert silver["d"]["consensus"]["status"] == consensus.UNICO
     assert silver["d"]["consensus"]["accepted"] is False
-    assert verdicts["b"]["consensus"]["status"] == consensus.DISCREPANCIA
+    assert consensus.resolve(verdicts["b"], "majority").status == consensus.DISCREPANCIA
+    assert len(verdicts["a"]) == 2, "los dos jueces dejan su voto por separado"
     assert summary["labeled"] == 3 and summary["accepted"] == 2
     assert summary["status"] == {consensus.UNANIME: 2, consensus.DISCREPANCIA: 1,
                                  consensus.UNICO: 1}
@@ -297,3 +305,101 @@ def test_render_report_con_y_sin_datos():
     md = calibration.render_report(r)
     assert "Cada juez frente al humano" in md and "predice el acierto" in md
     assert "100.0 %" in md
+
+
+# ------------------------------- almacén compartido de veredictos ----------
+
+def test_los_jueces_votan_por_separado_y_el_consenso_los_cruza(tmp_path):
+    """El agente va por lotes y Gemini de corrido: no pueden votar a la vez.
+
+    Por eso los votos se acumulan y el consenso se deriva después. Sin esto,
+    el agente de Claude Code no podría participar como juez.
+    """
+    from src.agents.silver.verdicts import append_verdict, coverage, load_verdicts
+
+    store = tmp_path / "verdicts.jsonl"
+    # Gemini pasa primero por todo el corpus...
+    for aid, clase in [("a", "populismo"), ("b", "progresismo"), ("c", "soberanismo")]:
+        append_verdict(store, aid, v("gemini", clase, family="gemini"))
+    # ...y el agente vota después, en otra sesión.
+    for aid, clase in [("a", "populismo"), ("b", "populismo")]:
+        append_verdict(store, aid, v("claude-agent", clase, family="claude"))
+
+    votos = load_verdicts(store)
+    assert coverage(store) == {"gemini": 3, "claude-agent": 2}
+    assert consensus.resolve(votos["a"]).status == consensus.UNANIME
+    assert consensus.resolve(votos["b"]).status == consensus.DISCREPANCIA
+    # 'c' solo lo vio Gemini: se conserva la etiqueta, pero no es consenso.
+    c = consensus.resolve(votos["c"])
+    assert (c.status, c.label, c.accepted) == (consensus.UNICO, "soberanismo", False)
+
+
+def test_un_voto_corregido_pisa_al_anterior(tmp_path):
+    # Permite rectificar sin reescribir el archivo, y el juez sigue contando
+    # una sola vez (si no, su voto viejo y el nuevo formarían "mayoría").
+    from src.agents.silver.verdicts import append_verdict, load_verdicts
+
+    store = tmp_path / "verdicts.jsonl"
+    append_verdict(store, "x", v("claude-agent", "populismo"))
+    append_verdict(store, "x", v("gemini", "progresismo"))
+    append_verdict(store, "x", v("claude-agent", "progresismo"))
+
+    votos = load_verdicts(store)["x"]
+    assert len(votos) == 2, "un juez no puede contar dos veces"
+    assert consensus.resolve(votos).label == "progresismo"
+
+
+def test_una_abstencion_se_registra_como_voto_invalido(tmp_path):
+    """`dud` deja rastro de que el agente LO VIO y no supo decidir.
+
+    Es distinto de no haberlo visto: sin el registro, el artículo volvería a
+    salir en un lote futuro y se re-pagaría.
+    """
+    from src.agents.silver.verdicts import append_verdict, judged_ids, load_verdicts
+
+    store = tmp_path / "verdicts.jsonl"
+    append_verdict(store, "x", Verdict("claude-agent", "m", "claude",
+                                       dominant=None, ok=False,
+                                       error="duda del anotador"))
+    assert "x" in judged_ids(store, judge="claude-agent")
+    assert consensus.resolve(load_verdicts(store)["x"]).status == consensus.SIN_VEREDICTO
+
+
+# ------------------------------------------- parseo de las decisiones -----
+
+def _silver_agent():
+    spec = importlib.util.spec_from_file_location(
+        "silver_agent", ROOT / "scripts" / "silver_agent.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["silver_agent"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_parse_decisions_acepta_abreviaturas_y_dudas():
+    sa = _silver_agent()
+    dec, err = sa.parse_decisions(
+        "# cabecera\n1 populismo 0.9\n2 inst\n3 dud\n4 prog 0.85\n\n")
+    assert err == []
+    assert dec[1] == {"clase": "populismo", "confianza": 0.9}
+    assert dec[2]["clase"] == "institucionalismo"
+    assert dec[2]["confianza"] == 0.8, "confianza por defecto"
+    assert dec[3]["clase"] is None, "dud no es una clase"
+    assert dec[4]["clase"] == "progresismo"
+
+
+def test_parse_decisions_no_pierde_las_lineas_buenas():
+    # Un typo en el artículo 50 no debe tirar los 49 anteriores.
+    sa = _silver_agent()
+    dec, err = sa.parse_decisions(
+        "1 populismo\n2 inventada\nx pop\n4\n5 prog 0.8\n1 inst\n")
+    assert set(dec) == {1, 5}
+    assert len(err) == 4
+
+
+def test_las_ocho_clases_tienen_abreviatura_y_son_las_del_esquema():
+    sa = _silver_agent()
+    from src.core.schema import IDEOLOGY_CLASSES
+
+    assert set(sa.ALIASES.values()) == set(IDEOLOGY_CLASSES)
+    assert len(sa.ALIASES) == 8

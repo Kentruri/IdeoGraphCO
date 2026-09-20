@@ -6,10 +6,11 @@ Escribe dos archivos:
   artículo con `label`, `label_idx`, `label_source="silver-ensemble"` y el
   bloque `consensus` (status, accepted, agreement, votos). Compatible con lo
   que ya consumen `prepare_splits.py` y el Dataset.
-- los VEREDICTOS (`<silver>.verdicts.jsonl`): lo que dijo CADA juez de cada
-  artículo. Es la trazabilidad del silver y lo que `calibration.py` necesita
-  para medir si el acuerdo predice el acierto. Sin este archivo el consenso
-  sería una caja negra.
+- los VEREDICTOS (`data/silver/verdicts.jsonl`): una línea por voto de cada
+  juez. Es un almacén COMPARTIDO: aquí escriben tanto los jueces por API como
+  el agente de Claude Code (`scripts/silver_agent.py`), que va por lotes. Es
+  la trazabilidad del silver y lo que `calibration.py` necesita para medir si
+  el acuerdo predice el acierto; sin él, el consenso sería una caja negra.
 
 Reanudable con cursor sidecar, igual que el juez simple. Un juez que agota
 cuota se retira del resto de la corrida (con aviso); si no queda ninguno, la
@@ -25,6 +26,7 @@ from pathlib import Path
 
 from src.agents.silver.consensus import SIN_VEREDICTO, mean_scores, resolve
 from src.agents.silver.judges import Judge, Verdict
+from src.agents.silver.verdicts import append_verdicts
 from src.core.ids import article_id
 from src.core.paths import RAW_DIR, SILVER_DIR
 from src.core.schema import CLASS_TO_IDX
@@ -53,7 +55,13 @@ def write_cursor(output_path: Path, line_num: int) -> None:
 
 
 def verdicts_path_for(output_path: Path) -> Path:
-    return output_path.with_name(output_path.stem + ".verdicts.jsonl")
+    """Almacén de votos COMPARTIDO, junto al silver.
+
+    Es el mismo archivo que usa scripts/silver_agent.py: el agente de Claude
+    Code vota por lotes y Gemini de corrido, y el consenso se deriva del
+    cruce. Por eso no cuelga del nombre de la salida.
+    """
+    return output_path.parent / "verdicts.jsonl"
 
 
 def _append_failed(output_path: Path, line_num: int, aid: str, reason: str) -> None:
@@ -160,8 +168,7 @@ def label_with_ensemble(
     processed = 0
     try:
         with open(input_path, encoding="utf-8") as fin, \
-             open(output_path, mode, encoding="utf-8") as fout, \
-             open(verdicts_path, mode, encoding="utf-8") as fver:
+             open(output_path, mode, encoding="utf-8") as fout:
 
             for i, line in enumerate(fin):
                 if i < cursor:
@@ -225,8 +232,7 @@ def label_with_ensemble(
                     counts["failed"] += 1
                 else:
                     consecutive_failures = 0
-                    fver.write(json.dumps(verdict_record, ensure_ascii=False) + "\n")
-                    fver.flush()
+                    append_verdicts(verdicts_path, aid, verdicts)
                     if silver_record is not None:
                         fout.write(json.dumps(silver_record, ensure_ascii=False) + "\n")
                         fout.flush()
