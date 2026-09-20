@@ -9,7 +9,7 @@ probabilística → mapa de calor.
 |---|-------|---------|--------|
 | 1 | Scrape + clean + filter LLM | `python scripts/scraper.py` | `data/raw/articles.jsonl` |
 | 2 | Labeling silver categórico (LLM) | `python scripts/label.py --input data/raw/articles.jsonl` | `data/silver/silver_set.jsonl` (`label` + 8 scores) |
-| 3 | Gold set v2 (libros por anotador con solape) | `python scripts/prepare_gold_set.py --annotators kevin juan` | `annotation/gold_set_v2_<anotador>.xlsx` |
+| 3 | Gold set v2 (1.301 artículos, un anotador) | `python scripts/prepare_gold_set.py --annotators juan --target 1300 --overlap 0` | tareas de Label Studio en `annotation/labelstudio/` |
 | 3b | Ingesta gold + **Krippendorff α** + consenso | `python scripts/ingest_gold.py --books ... --audit-silver data/silver/silver_set.jsonl` | `annotation/gold_set_v2_labeled.jsonl` + reporte α |
 | 4 | Dataset canónico + splits por ID (test = gold HUMANO) | `python scripts/prepare_splits.py --gold-labeled annotation/gold_set_v2_labeled.jsonl` | `data/processed/dataset.jsonl` + `splits.json` |
 | 5 | Training de 1 modelo | `python -m src.training.train` | `logs/checkpoints/<alias>/best.ckpt` |

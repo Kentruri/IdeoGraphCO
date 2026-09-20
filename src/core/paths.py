@@ -3,7 +3,8 @@ from pathlib import Path
 # Raíz del proyecto (tres niveles arriba de este archivo: src/core/paths.py)
 ROOT = Path(__file__).resolve().parent.parent.parent
 
-# Datos versionados con DVC
+# El corpus vive en un dataset privado de Hugging Face; en git solo va
+# data/corpus.lock con la revisión. Ver scripts/dataset_sync.py.
 DATA_DIR = ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"             # artículos crudos del scraper (post filter)
 INTERIM_DIR = DATA_DIR / "interim"     # outputs intermedios (legacy, evitar usar)

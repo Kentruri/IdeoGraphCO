@@ -197,8 +197,8 @@ src/
 
 scripts/                   # CLIs delgados (orquestan src/)
 configs/                   # Hydra (model, data, trainer)
-annotation/                # gold set v1 (xlsx + jsonl + ids.json)
-data/                      # versionado con DVC
+annotation/                # gold set v2 (jsonl + ids + tareas de Label Studio)
+data/                      # corpus en HF (data/corpus.lock ancla la revisión)
 docs/                      # guías técnicas + preguntas al director
 workflows-guide/           # guía paso a paso por etapa
 ```
@@ -232,7 +232,8 @@ dieron de baja tras medir que su contenido era mayormente de otros países):
   `cleaner.py`, visible en `scripts/analyze_filter_log.py`
 - **torchmetrics** — Precision / Recall / F1 Macro / Accuracy / Confusion Matrix
 - **Plotly** — heatmap interactivo
-- **DVC** — versionado de `data/`
+- **Hugging Face Hub** — corpus en un dataset privado; `data/corpus.lock`
+  ancla qué revisión corresponde a cada commit (`scripts/dataset_sync.py`)
 
 ## Convenciones de código
 

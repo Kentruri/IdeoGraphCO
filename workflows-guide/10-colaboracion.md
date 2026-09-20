@@ -46,7 +46,6 @@ git push
 # 3. Subir el corpus y anclar su revisión
 .venv/bin/python scripts/dataset_sync.py push -m "corpus v1"
 git add data/corpus.lock
-git add data/raw.dvc data/.gitignore
 git commit -m "data: corpus filtrado 41k + crudo" && git push
 
 # 4. Muestrear el gold y generar las tareas — YA HECHO (commit c6de08b)
@@ -87,7 +86,7 @@ echo "HF_TOKEN=hf_..." >> .env        # su propio token de Hugging Face
 ```
 
 Para **anotar**, Juan no necesita el corpus, ni Label Studio, ni instalar
-nada: solo un navegador. El `dvc pull` es para cuando toque entrenar.
+nada: solo un navegador. El `dataset_sync.py pull` es para cuando toque entrenar.
 
 1. Abrir el enlace de invitación que le pasa Kevin
    (`https://….trycloudflare.com/user/signup/?token=…`) y crear su usuario
@@ -173,9 +172,8 @@ entrenamiento aunque el corpus crezca.
 
 ```bash
 git status --short                 # ¿qué tengo sin publicar?
-.venv/bin/dvc status -c             # ¿hay corpus local sin subir a Drive?
-.venv/bin/dvc data status           # ¿cambió data/ desde el último add?
+.venv/bin/python scripts/dataset_sync.py status   # ¿el disco coincide con la revisión del lock?
 ```
 
-Ver también [09-compartir-datos.md](09-compartir-datos.md) (detalle de DVC) y
+Ver también [09-compartir-datos.md](09-compartir-datos.md) (detalle de Hugging Face) y
 [04-gold-set.md](04-gold-set.md) (la anotación en sí).

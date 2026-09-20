@@ -1,6 +1,6 @@
 """Reconstruye scraper_history.db desde corpus existentes.
 
-La BD de dedup es un cache local que NO viaja con git/DVC: en una máquina
+La BD de dedup es un cache local que NO viaja con git ni con el corpus de Hugging Face: en una máquina
 nueva (o si se borra) queda vacía y el scraper re-descargaría todo el corpus.
 Este script la reconstruye marcando como "ya scrapeadas" las URLs y hashes de
 contenido de los JSONL que ya tienes.

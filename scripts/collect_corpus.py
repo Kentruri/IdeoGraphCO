@@ -308,7 +308,7 @@ def main() -> None:
             print("    python scripts/filter_corpus.py    # filtrar (politicidad)")
         else:
             print("    python scripts/label.py            # etiquetado silver")
-        print("    dvc add data/raw                   # versionar el corpus")
+        print("    python scripts/dataset_sync.py push  # subir el corpus a HF")
     print("=" * 66)
 
 

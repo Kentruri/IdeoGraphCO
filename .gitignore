@@ -1,6 +1,5 @@
-# Data versionada con DVC: el contenido real lo guarda DVC,
-# los archivos .dvc (metadatos) sí van a git.
-# DVC crea su propio .gitignore dentro de cada carpeta versionada.
+# El corpus vive en un dataset privado de Hugging Face; en git solo va
+# data/corpus.lock con la revisión (ver scripts/dataset_sync.py).
 data/scraper_history.db
 data/scraper_history.db-wal
 data/scraper_history.db-shm
@@ -56,11 +55,14 @@ wandb/
 !.claude/agents/
 !.claude/skills/
 
-# Corpus y estado de ejecución: NUNCA por git. El corpus viaja por DVC
-# (data/raw.dvc sí se versiona; el contenido no) y agent_batches es estado
+# Corpus y estado de ejecución: NUNCA por git. El corpus viaja por Hugging
+# Face (data/corpus.lock sí se versiona; el contenido no) y agent_batches es estado
 # vivo del filtrado. Sin esto, un `git add .` intenta subir ~600 MB.
 data/raw/
 data/agent_batches/
 
 # Paquetes para anotadores: se regeneran con scripts/package_for_annotator.py
 annotation/paquetes/
+
+# Salida de scripts/generate_sample.py: se regenera, no se versiona
+muestra_ideologica*.xlsx

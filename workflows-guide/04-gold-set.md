@@ -1,5 +1,18 @@
 # 4 — Gold set humano (Handwrite)
 
+> **Estado (sep-2026).** El gold vigente son **1.301 artículos anotados por
+> una sola persona**, sin bloque de solape: se muestreó con
+> `--annotators juan --target 1300 --overlap 0` y se anota siguiendo
+> [ANOTACION.md](../ANOTACION.md) (`scripts/anotar.py`, Label Studio local).
+>
+> Lo que sigue describe el protocolo de **DOS anotadores con solape** que
+> exige el anteproyecto para el α de Krippendorff (producto P1.3). Está
+> **aplazado, no descartado**: los IDs están en
+> `annotation/gold_set_v2_ids.json`, así que basta con que el segundo
+> anotador etiquete un subconjunto de los mismos artículos para recuperar el
+> α sin rehacer el muestreo. La maquinaria (`ingest_gold.py`,
+> `src/agents/gold/agreement.py`) sigue viva y probada.
+
 Muestreo estratificado de N artículos para anotación humana, en dos formatos:
 **Label Studio** (recomendado) y **Excel** (respaldo). El gold set es el
 **test set** del modelo (mientras silver es train/val).

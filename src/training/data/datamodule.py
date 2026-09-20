@@ -77,7 +77,7 @@ class IdeoGraphDataModule(L.LightningDataModule):
         """Carga el dataset completo y lo divide en train/val/test.
 
         Con `splits_path` configurado, el archivo DEBE existir: antes, un
-        clon sin `dvc pull` caía silenciosamente a random_split, mezclaba
+        clon sin el corpus caía silenciosamente a random_split, mezclaba
         el gold en train y cada semilla del benchmark obtenía un test
         distinto — sin ningún error visible.
         """
@@ -89,7 +89,7 @@ class IdeoGraphDataModule(L.LightningDataModule):
         if self.splits_path and not self.splits_path.exists():
             raise FileNotFoundError(
                 f"No existe {self.splits_path}. Corre `python scripts/prepare_splits.py` "
-                "(¿o falta `dvc pull`?). Para un split aleatorio de desarrollo, "
+                "(¿o falta `scripts/dataset_sync.py pull`?). Para un split aleatorio de desarrollo, "
                 "pasa explícitamente data.splits_path=null."
             )
 

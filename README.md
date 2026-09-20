@@ -46,6 +46,10 @@ Pipeline completo en [PIPELINE.md](PIPELINE.md). Detalle por etapa en
 [workflows-guide/](workflows-guide/). Decisiones pendientes con el director
 en [docs/preguntas-director.md](docs/preguntas-director.md).
 
+**¿Vienes a anotar el gold set?** Todo lo que necesitas está en
+[ANOTACION.md](ANOTACION.md): comandos para macOS y Windows, de instalar
+Python a subir tu avance. No hace falta el corpus ni el resto del proyecto.
+
 ## Estructura
 
 ```
@@ -65,4 +69,4 @@ src/
 - Gemini API (silver labels, filter)
 - torchmetrics (F1 Macro, Confusion Matrix, ...)
 - Plotly (heatmap)
-- DVC (versionado de datos)
+- Hugging Face Hub (corpus privado, `scripts/dataset_sync.py`)
