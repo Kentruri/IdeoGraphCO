@@ -12,7 +12,6 @@ Resumen del pipeline en [PIPELINE.md](../PIPELINE.md). Aquí, una página por et
 | 5 | [Splits](05-splits.md) (dataset canónico + splits por ID, test=gold humano) | `python scripts/prepare_splits.py --gold-labeled ...` | `data/processed/dataset.jsonl` + `splits.json` |
 | 6 | [Training](06-training.md) (Hydra + Lightning) | `python -m src.training.train` | `logs/checkpoints/...` |
 | 7 | [Benchmark](07-benchmark.md) (selección en VALIDACIÓN; test una vez con `final_eval.py`) | `python scripts/benchmark.py --seeds 42 43 44` | `reports/benchmark_report.md` + `reports/evaluacion_final.md` |
-| 8 | [Inference](08-inference.md) (heatmap HTML + servicio `POST /classify`) | ver guía | heatmap HTML / API |
 | 9 | [Compartir el corpus](09-compartir-datos.md) (Hugging Face, repo privado) | `python scripts/dataset_sync.py pull` | corpus desde HF, revisión en `data/corpus.lock` |
 | 10 | [Colaboración](10-colaboracion.md) (git · Hugging Face · anotación) | `git push` / `dataset_sync.py push` / `ingest_gold.py` | `annotation/gold_set_v2_labeled.jsonl` |
 

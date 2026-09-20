@@ -15,8 +15,6 @@ probabilística → mapa de calor.
 | 5 | Training de 1 modelo | `python -m src.training.train` | `logs/checkpoints/<alias>/best.ckpt` |
 | 5b | Benchmark (selección en VALIDACIÓN) | `python scripts/benchmark.py --seeds 42 43 44` | `reports/benchmark_report.md` |
 | 6 | **Evaluación final en test — UNA vez, con el ganador** (P3.1) | `python scripts/final_eval.py --checkpoint logs/checkpoints/<alias>/best.ckpt` | `reports/evaluacion_final.md` (por clase + confusión + errores) |
-| 7 | Inferencia local | Ver `workflows-guide/08-inference.md` | mapa de calor HTML |
-| 7b | Servicio de inferencia (para IdeoGraphCO-BE) | `IDEOGRAPH_CHECKPOINT=... uvicorn src.inference.api:app --port 8080` | `POST /classify`, `POST /delta`, `GET /health` |
 
 ## Notas clave
 
@@ -67,7 +65,7 @@ probabilística → mapa de calor.
   softmax. `max_chunks=16` cubre hasta el token 6.270 (el p99 del corpus son
   5.176); con `batch_size=8` + `accumulate_grad_batches=2` la memoria pico es
   la misma que la de la config previa (8 chunks × batch 16).
-- **ΔD**: `src/inference/delta.py` — distancia de Jensen-Shannon (default,
+- **ΔD**: distancia de Jensen-Shannon entre huellas ideológicas (default,
   ∈ [0,1]) entre dos distribuciones de 8 clases; alternativas Hellinger y
   variación total. Expuesta también en `POST /delta`. Da soporte al "diseño
   comparativo" de la Fase 4 del anteproyecto; **no es un producto

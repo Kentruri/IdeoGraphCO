@@ -150,6 +150,18 @@ de PRUEBA del OE3. Dos reglas, ambas con test de regresión
 Ninguna de las dos fugas da error en tiempo de ejecución: producen números
 buenos y falsos.
 
+## Alcance del repositorio
+
+Este repo llega hasta el **checkpoint entrenado y su evaluación** (OE1-OE3).
+La inferencia, el servicio HTTP y el prototipo (OE4) viven en
+**IdeoGraphCO-BE**; se retiraron de aquí en sep-2026.
+
+Tres contratos cruzan esa frontera y **ningún test puede verificarlos**:
+el troceo (viaja en los hiperparámetros del checkpoint), la composición de la
+entrada (`src/core/text.py::build_model_input`) y el orden de las 8 clases
+(`src/core/schema.py`). Están escritos en
+[docs/traspaso-inferencia-BE.md](docs/traspaso-inferencia-BE.md).
+
 ## Pipeline de datos
 
 ```
@@ -168,7 +180,7 @@ src.training.train / scripts/benchmark.py (selección en VALIDACIÓN)
         ↓
 scripts/final_eval.py (test UNA vez, P3.1) → reports/evaluacion_final.md
         ↓
-src.inference.predictor (heatmap) · src.inference.api (POST /classify para el BE)
+checkpoint entrenado → IdeoGraphCO-BE (inferencia y prototipo, OE4)
 ```
 
 ## Estructura del proyecto (monorepo)
@@ -193,7 +205,6 @@ src/
 │   ├── models/            # IdeoClassifier
 │   ├── benchmark/         # registry de los 4 encoders del PDF
 │   └── train.py           # Hydra + Lightning Trainer
-└── inference/             # predictor + heatmap (Plotly)
 
 scripts/                   # CLIs delgados (orquestan src/)
 configs/                   # Hydra (model, data, trainer)
@@ -231,7 +242,6 @@ dieron de baja tras medir que su contenido era mayormente de otros países):
   `boilerplate_residual` solo se registra — es la señal para mejorar
   `cleaner.py`, visible en `scripts/analyze_filter_log.py`
 - **torchmetrics** — Precision / Recall / F1 Macro / Accuracy / Confusion Matrix
-- **Plotly** — heatmap interactivo
 - **Hugging Face Hub** — corpus en un dataset privado; `data/corpus.lock`
   ancla qué revisión corresponde a cada commit (`scripts/dataset_sync.py`)
 

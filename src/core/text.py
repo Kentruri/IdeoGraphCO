@@ -2,10 +2,15 @@
 
 Fuente ÚNICA de verdad para las tres etapas que tocan la etiqueta: el juez
 que la asigna (`agents/silver/judge.py`), el entrenamiento que la aprende
-(`training/data/dataset.py`) y la inferencia que la predice
-(`inference/api.py`). Antes cada una componía su entrada por separado y no
+(`training/data/dataset.py`) y la inferencia que la predice, que ahora vive
+en **IdeoGraphCO-BE**. Antes cada una componía su entrada por separado y no
 coincidían: el juez y el entrenamiento veían solo `text`, mientras la API
 antependía el titular — train/serve skew silencioso.
+
+Que la inferencia esté en otro repositorio hace esto MÁS delicado, no menos:
+ningún test puede cruzar la frontera. Quien sirva el modelo debe componer la
+entrada exactamente igual que `build_model_input`, o el modelo verá en
+producción algo distinto de lo que aprendió.
 
 El titular SÍ entra, por dos razones:
 

@@ -88,6 +88,11 @@ def train(cfg: DictConfig) -> None:
         freeze_encoder_epochs=cfg.model.freeze_encoder_epochs,
         warmup_ratio=cfg.model.get("warmup_ratio", 0.1),
         use_politicity_head=cfg.model.get("use_politicity_head", False),
+        # El checkpoint debe describir su propio troceo: quien lo sirva
+        # (IdeoGraphCO-BE) no tiene configs/data/default.yaml.
+        chunk_size=cfg.data.chunk_size,
+        chunk_stride=cfg.data.chunk_stride,
+        max_chunks=cfg.data.max_chunks,
     )
 
     # --- Checkpoints ---

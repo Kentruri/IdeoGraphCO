@@ -37,9 +37,6 @@ python scripts/benchmark.py --seeds 42 43 44
 python scripts/compare_models.py
 python scripts/final_eval.py --checkpoint logs/checkpoints/<ganador>/best.ckpt
 
-# 6. Servicio de inferencia (contrato de IdeoGraphCO-BE)
-IDEOGRAPH_CHECKPOINT=logs/checkpoints/<ganador>/best.ckpt \
-    uvicorn src.inference.api:app --port 8080
 ```
 
 Pipeline completo en [PIPELINE.md](PIPELINE.md). Detalle por etapa en
@@ -58,7 +55,6 @@ src/
 ├── scraper/       # scraping + cleaning + filter LLM
 ├── agents/silver/ # LLM-as-a-Judge
 ├── training/      # data, models, train, benchmark
-└── inference/     # predictor + heatmap
 ```
 
 ## Stack
@@ -68,5 +64,4 @@ src/
 - Trafilatura (scraping)
 - Gemini API (silver labels, filter)
 - torchmetrics (F1 Macro, Confusion Matrix, ...)
-- Plotly (heatmap)
 - Hugging Face Hub (corpus privado, `scripts/dataset_sync.py`)

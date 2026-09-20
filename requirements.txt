@@ -8,6 +8,10 @@
 #     python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 #
 # Las versiones son las probadas; pip resuelve solo las transitivas.
+#
+# La INFERENCIA no vive aquí: el servicio HTTP, el predictor y el mapa de
+# calor están en IdeoGraphCO-BE. Este repo llega hasta el checkpoint
+# entrenado y su evaluación (OE1-OE3).
 
 # --- Scraping y limpieza (OE1) ---
 trafilatura==2.0.0
@@ -41,10 +45,7 @@ PyYAML==6.0.3
 scikit-learn==1.8.0
 joblib==1.5.3
 
-# --- Inferencia y prototipo (OE4) ---
-fastapi==0.141.1              # src/inference/api.py
-pydantic==2.13.3
-plotly==6.6.0                 # src/inference/heatmap.py
+# --- Gráficas del benchmark ---
 matplotlib==3.11.1            # scripts/compare_models.py
 
 # --- Desarrollo (no hacen falta para correr el pipeline) ---

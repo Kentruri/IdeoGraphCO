@@ -1,7 +1,8 @@
 """Schema central del proyecto — fuente única de verdad para nombres y campos.
 
 Estos constantes son compartidas por todos los módulos (scraper, agents,
-training, inference) para evitar duplicación y desincronización.
+training) para evitar duplicación y desincronización. IdeoGraphCO-BE
+replica esta lista en su CONTRACT.md: si cambia aquí, cambia allí.
 
 Design note: el proyecto es un CLASIFICADOR MULTICLASE SINGLE-LABEL con
 8 clases mutuamente excluyentes (una ideología dominante por artículo). Las

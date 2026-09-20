@@ -57,8 +57,18 @@ class IdeoClassifier(L.LightningModule):
         freeze_encoder_epochs: int = 0,
         warmup_ratio: float = 0.1,
         use_politicity_head: bool = False,  # TBD — ver docstring del módulo
+        chunk_size: int = 512,
+        chunk_stride: int = 384,
+        max_chunks: int = 16,
     ) -> None:
         super().__init__()
+        # El troceo es de DATOS, no del modelo, pero viaja en los
+        # hiperparámetros a propósito: el checkpoint tiene que describirse a sí
+        # mismo. Quien sirva el modelo (IdeoGraphCO-BE) no tiene
+        # configs/data/default.yaml, y si adivina los valores reaparece el
+        # train/serve skew que ya ocurrió una vez (entrenar con max_chunks=16
+        # y servir con 8: el modelo veía hasta el token 6.270 al entrenar y
+        # 3.198 al predecir, peor cuanto más largo el artículo).
         self.save_hyperparameters()
 
         # --- Encoder ---
