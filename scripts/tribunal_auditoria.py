@@ -43,7 +43,7 @@ BASE = ROOT / "annotation" / "calibration" / "tribunal_v12"
 CORPUS = BASE / "corpus.jsonl"
 CORPUS_OPUS = BASE / "corpus_opus.jsonl"
 HUMANO = BASE / "humano.json"
-EXPORTS = sorted((ROOT / "annotation").glob("gold_set_v2_*.json"))
+ASIGNACION = ROOT / "annotation" / "gold_set_v2_assignment.json"
 GOLD_JSONL = ROOT / "annotation" / "gold_set_v2.jsonl"
 PYTHON = str(ROOT / ".venv" / "bin" / "python")
 
@@ -53,18 +53,26 @@ def log(msg: str) -> None:
 
 
 def etiquetas_humanas() -> dict[str, str]:
-    """{id: clase} de los exports de Label Studio (la última anotación válida)."""
-    out: dict[str, str] = {}
-    for f in EXPORTS:
-        if f.name in ("gold_set_v2_ids.json", "gold_set_v2_assignment.json"):
+    """{id: clase} de los exports de Label Studio (la última anotación válida).
+
+    Solo lee `gold_set_v2_<anotador>.json` de los anotadores de la asignación:
+    antes leía cualquier `gold_set_v2_*.json`, y un respaldo viejo guardado
+    ahí pisaba la exportación vigente. Si varios anotadores etiquetaron el
+    mismo artículo, solo cuenta cuando coinciden; lo demás espera al consenso.
+    """
+    anotadores = json.loads(ASIGNACION.read_text(encoding="utf-8"))["annotators"]
+    por_id: dict[str, set[str]] = {}
+    for nombre in anotadores:
+        f = ROOT / "annotation" / f"gold_set_v2_{nombre}.json"
+        if not f.exists():
             continue
         for t in json.loads(f.read_text(encoding="utf-8")):
             anns = [a for a in t.get("annotations", []) if not a.get("was_cancelled")]
             for a in anns[-1:]:
                 for r in a.get("result", []):
                     if r.get("from_name") == "clase_dominante":
-                        out[t["data"]["id"]] = r["value"]["choices"][0]
-    return out
+                        por_id.setdefault(t["data"]["id"], set()).add(r["value"]["choices"][0])
+    return {i: next(iter(c)) for i, c in por_id.items() if len(c) == 1}
 
 
 def _ids(path: Path) -> list[str]:
