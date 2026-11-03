@@ -319,10 +319,14 @@ texto roto o no político.
 - **El α se reporta de dos formas**: sobre las 9 respuestas y solo donde los
   anotadores ven encuadre (el desacuerdo es sobre SI hay encuadre más que
   sobre CUÁL).
-- **Falta la doble anotación**: el gold lo anota solo Juan (solape 0). Para
-  α mínimo 0,8, Krippendorff (2019, fórmula de Bloch y Kraemer 1989) pide
-  ~120 artículos con doble anotación si las 8 clases fueran igual de
-  frecuentes y ~280 si la más rara es el 5 %.
+- **Doble anotación completa** (decisión del 3-nov): Kevin anota también los
+  1.301 (`scripts/gold_solape.py`, tareas en
+  `annotation/labelstudio/gold_set_v2_kevin_tasks.json`), empezando por los
+  392 que Juan ya abrió. Así cada etiqueta del test sale del acuerdo o el
+  consenso de dos, y el α alcanza a las clases raras: con una categoría del
+  ~1 %, Krippendorff (2019, fórmula de Bloch y Kraemer 1989) pide ~1.350
+  unidades con doble anotación para α mínimo 0,8 (con 8 clases igual de
+  frecuentes bastarían ~120).
 
 ## Aislamiento del gold (no negociable)
 

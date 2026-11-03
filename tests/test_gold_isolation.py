@@ -196,6 +196,29 @@ def test_sin_encuadre_cuenta_para_el_alfa_pero_no_entra_al_test(tmp_path, monkey
     assert "| sin_encuadre (fuera del test) | 1 |" in reporte
 
 
+def test_el_segundo_anotador_recibe_todo_el_gold_con_lo_abierto_primero():
+    """El solape es el gold completo: nada se pierde ni se repite.
+
+    Lo que el primer anotador ya abrió (también lo saltado) va al principio,
+    para medir el α cuanto antes; el resto conserva su orden.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "gold_solape", ROOT / "scripts" / "gold_solape.py")
+    gs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gs)
+
+    export = [
+        {"data": {"id": "g3"}, "annotations": [{"result": []}]},
+        {"data": {"id": "g1"}, "annotations": [{"was_cancelled": True, "result": []}]},
+        {"data": {"id": "g2"}, "annotations": []},                     # sin abrir
+    ]
+    ya = gs.abiertos(export)
+    assert ya == {"g1", "g3"}
+
+    orden = gs.orden_solape(["g1", "g2", "g3", "g4"], ya)
+    assert orden == ["g1", "g3", "g2", "g4"]
+
+
 @pytest.mark.skipif(not (ROOT / "annotation" / "gold_set_v2_ids.json").exists(),
                     reason="no hay gold muestreado")
 def test_los_ids_del_gold_son_unicos_y_estan_completos():
