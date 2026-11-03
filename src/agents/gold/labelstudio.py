@@ -33,9 +33,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES
+from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES, NO_FRAME_LABEL
 
 AXES: list[str] = IDEOLOGY_CLASSES
+# Lo que el anotador puede marcar: las 8 clases o `sin_encuadre`.
+HUMAN_LABELS: frozenset[str] = frozenset(CLASS_TO_IDX) | {NO_FRAME_LABEL}
 
 # ---------------------------------------------------------------------------
 # Plantilla de la interfaz (se pega en Label Studio → Labeling Interface)
@@ -83,6 +85,12 @@ def build_labeling_config(with_scales: bool = False) -> str:
     choices = "\n".join(
         f'      <Choice value="{cls}" hint="{_CLASS_HINTS[cls]}"/>'
         for cls in IDEOLOGY_CLASSES
+    )
+    # Separada de las 8: no es una clase. Sin ella, el anotador saltaba la
+    # tarea, y un salto no distingue "sin encuadre" de "texto roto".
+    choices += (
+        f'\n      <Choice value="{NO_FRAME_LABEL}" style="margin-top:12px" '
+        'hint="noticia política sin encuadre ideológico: no entra al test"/>'
     )
 
     ratings_block = ""
@@ -228,7 +236,7 @@ def parse_export(path: Path) -> dict[str, dict]:
                 choices = value.get("choices") or []
                 if choices:
                     candidate = str(choices[0]).strip().lower()
-                    if candidate in CLASS_TO_IDX:
+                    if candidate in HUMAN_LABELS:
                         dominant = candidate
             elif name == "notes":
                 texts = value.get("text") or []

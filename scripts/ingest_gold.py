@@ -13,6 +13,9 @@ Flujo (metodología del anteproyecto — Calibración Humana):
    se resuelven pasando `--consensus` con la columna `label_final` llena.
 4. Escribe `annotation/gold_set_<v>_labeled.jsonl` con label/label_idx +
    label_source="human" — lo que consume scripts/prepare_splits.py.
+   Lo resuelto como `sin_encuadre` cuenta para el α (decidir si hay encuadre
+   es parte de la codificación) pero NO entra a ese archivo: no es una de las
+   8 clases y queda fuera del test (decisión del 3-nov-2026).
 5. (Opcional) `--audit-silver`: α y accuracy del juez LLM contra el consenso
    humano sobre los mismos artículos (auditoría del Silver Set, P1.3).
 
@@ -35,10 +38,19 @@ import openpyxl
 
 from src.agents.gold import labelstudio
 from src.agents.gold.agreement import krippendorff_alpha, percent_agreement
-from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES
+from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES, NO_FRAME_LABEL
 
 AXES = IDEOLOGY_CLASSES
 DOMINANT_COL = "clase_dominante"
+
+
+def _human_label(raw: str) -> str | None:
+    """Una de las 8 clases o `sin_encuadre`; None si es otra cosa.
+
+    En una hoja de cálculo se escribe "sin encuadre" con espacio.
+    """
+    value = raw.strip().lower().replace(" ", "_")
+    return value if value in labelstudio.HUMAN_LABELS else None
 
 
 def read_csv_book(path: Path) -> dict[str, dict]:
@@ -72,8 +84,7 @@ def read_csv_book(path: Path) -> dict[str, dict]:
             article_id = (row.get(campos["id"]) or "").strip()
             if not article_id:
                 continue
-            raw = (row.get(col_clase) or "").strip().lower()
-            dominant = raw if raw in CLASS_TO_IDX else None
+            dominant = _human_label(row.get(col_clase) or "")
             notes = (row.get(col_notas) or "").strip() if col_notas else ""
             annotations[article_id] = {
                 "dominant": dominant,
@@ -134,8 +145,8 @@ def read_book(path: Path) -> dict[str, dict]:
         dominant = None
         if has_dominant and col[DOMINANT_COL] < len(row):
             raw = row[col[DOMINANT_COL]]
-            if isinstance(raw, str) and raw.strip().lower() in CLASS_TO_IDX:
-                dominant = raw.strip().lower()
+            if isinstance(raw, str):
+                dominant = _human_label(raw)
 
         notes = ""
         if "notes" in col and col["notes"] < len(row) and row[col["notes"]]:
@@ -272,15 +283,25 @@ def main() -> None:
             dominant_units.append(values)
         alpha_dominant = krippendorff_alpha(dominant_units, level="nominal")
         agreement = percent_agreement(dominant_units)
+        # Diagnóstico: el desacuerdo sobre SI hay encuadre frente al de CUÁL.
+        framed_units = [
+            values for values in dominant_units
+            if all(v in CLASS_TO_IDX for v in values if v is not None)
+        ]
+        alpha_framed = krippendorff_alpha(framed_units, level="nominal")
+        no_frame_units = sum(1 for values in dominant_units if NO_FRAME_LABEL in values)
 
         report_lines += [
-            "## Clase dominante (nominal)",
+            f"## Clase dominante (nominal, 8 clases + {NO_FRAME_LABEL})",
             "",
             f"- **Krippendorff α = {alpha_dominant:.4f}**" if alpha_dominant is not None
             else "- α no calculable (sin unidades pareables con dominante)",
             f"- Acuerdo bruto: {agreement:.1%}" if agreement is not None else "",
             f"- Umbral del anteproyecto: α ≥ 0.8 → "
             f"{'CUMPLE ✓' if (alpha_dominant or 0) >= 0.8 else 'NO CUMPLE ✗ (iterar codebook)'}",
+            f"- Unidades donde algún anotador marcó {NO_FRAME_LABEL}: {no_frame_units}",
+            f"- α solo donde todos vieron encuadre (n={len(framed_units)}): "
+            + (f"{alpha_framed:.4f}" if alpha_framed is not None else "n/a"),
             "",
             "## Escalas 1-5 por eje (interval)",
             "",
@@ -308,8 +329,8 @@ def main() -> None:
     if args.consensus:
         with open(args.consensus, encoding="utf-8", newline="") as f:
             for row in csv.DictReader(f):
-                label = (row.get("label_final") or "").strip().lower()
-                if label in CLASS_TO_IDX:
+                label = _human_label(row.get("label_final") or "")
+                if label:
                     consensus[row["id"].strip()] = label
 
     # --- Resolver etiqueta final por artículo ---
@@ -366,6 +387,11 @@ def main() -> None:
             article = articles.get(aid)
             if article is None:
                 print(f"  ⚠ {aid} anotado pero no está en {jsonl_path.name}; omitido")
+                continue
+            if resolution["label"] == NO_FRAME_LABEL:
+                # Fuera del test, pero sigue en gold_set_v2_ids.json: la
+                # guardia de prepare_splits lo mantiene fuera de train/val.
+                label_dist[NO_FRAME_LABEL] += 1
                 continue
             scores_by_annotator = {
                 name: b[aid]["scores"] for name, b in books.items() if aid in b
@@ -438,12 +464,15 @@ def main() -> None:
         "| Clase | n |",
         "|-------|---|",
         *[f"| {cls} | {label_dist.get(cls, 0)} |" for cls in IDEOLOGY_CLASSES],
+        f"| {NO_FRAME_LABEL} (fuera del test) | {label_dist.get(NO_FRAME_LABEL, 0)} |",
         "",
-        f"Total etiquetados: {written} · Pendientes de consenso: {len(pending)}",
+        f"Total etiquetados (test): {written} · {NO_FRAME_LABEL}: "
+        f"{label_dist.get(NO_FRAME_LABEL, 0)} · Pendientes de consenso: {len(pending)}",
     ]
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
 
-    print(f"\n✓ Gold etiquetado: {output_path} ({written} artículos)")
+    print(f"\n✓ Gold etiquetado: {output_path} ({written} artículos; "
+          f"{label_dist.get(NO_FRAME_LABEL, 0)} {NO_FRAME_LABEL} fuera del test)")
     print(f"✓ Reporte de concordancia: {report_path}")
     if alpha_dominant is not None:
         status = "CUMPLE ✓" if alpha_dominant >= 0.8 else "NO CUMPLE ✗"

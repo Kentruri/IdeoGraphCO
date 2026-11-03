@@ -14,7 +14,7 @@ from src.agents.gold.labelstudio import (
     build_tasks,
     parse_export,
 )
-from src.core.schema import IDEOLOGY_CLASSES
+from src.core.schema import IDEOLOGY_CLASSES, NO_FRAME_LABEL
 
 
 def test_default_config_asks_only_for_dominant_class():
@@ -31,8 +31,9 @@ def test_default_config_asks_only_for_dominant_class():
     choices = [el for el in root.iter("Choices") if el.get("name") == "clase_dominante"]
     assert len(choices) == 1
     assert choices[0].get("required") == "true", "la dominante debe ser obligatoria"
-    values = {c.get("value") for c in choices[0].iter("Choice")}
-    assert values == set(IDEOLOGY_CLASSES)
+    values = [c.get("value") for c in choices[0].iter("Choice")]
+    # las 8 clases y, al final y aparte, la opción de no encuadre
+    assert values == [*IDEOLOGY_CLASSES, NO_FRAME_LABEL]
     # cada botón lleva una pista legible del codebook
     assert all(c.get("hint") for c in choices[0].iter("Choice"))
 
@@ -103,13 +104,16 @@ def test_parse_export_matches_read_book_contract(tmp_path):
         _ls_task("art2", [_rating("soberanismo", 0), _dominant("soberanismo")]),
         # clase inválida (no está en el codebook) → dominante None
         _ls_task("art3", [_dominant("otra_cosa")]),
+        # sin_encuadre es una respuesta válida del anotador, no un hueco
+        _ls_task("art4", [_dominant(NO_FRAME_LABEL)]),
     ]
     path = tmp_path / "export.json"
     path.write_text(json.dumps(export), encoding="utf-8")
 
     parsed = parse_export(path)
 
-    assert set(parsed) == {"art1", "art2", "art3"}
+    assert set(parsed) == {"art1", "art2", "art3", "art4"}
+    assert parsed["art4"]["dominant"] == NO_FRAME_LABEL
     a1 = parsed["art1"]
     assert set(a1) == {"dominant", "scores", "notes"}          # contrato exacto
     assert a1["dominant"] == "populismo"

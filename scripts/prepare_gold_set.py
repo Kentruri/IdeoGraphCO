@@ -44,6 +44,7 @@ AXES: list[str] = [
 ]
 
 DOMINANT_COL = "clase_dominante"
+NO_FRAME_LABEL = "sin_encuadre"  # = src.core.schema.NO_FRAME_LABEL: anotación, no clase
 
 SCALE_DESC: list[tuple[str, str]] = [
     ("1 — Ausente",   "No hay presencia del marcador."),
@@ -232,11 +233,11 @@ def build_excel(
         dv_axes.add(f"{first_axis_col}2:{last_axis_col}{ws.max_row}")
         ws.add_data_validation(dv_axes)
 
-    # Data validation: clase dominante (una de las 8)
+    # Data validation: clase dominante (una de las 8, o sin_encuadre)
     dv_dominant = DataValidation(
-        type="list", formula1=f'"{",".join(AXES)}"', allow_blank=True,
+        type="list", formula1=f'"{",".join([*AXES, NO_FRAME_LABEL])}"', allow_blank=True,
         showErrorMessage=True, errorTitle="Clase inválida",
-        error="Debe ser una de las 8 clases (en minúsculas).",
+        error=f"Debe ser una de las 8 clases o {NO_FRAME_LABEL} (en minúsculas).",
     )
     dom_col_letter = get_column_letter(dominant_idx)
     dv_dominant.add(f"{dom_col_letter}2:{dom_col_letter}{ws.max_row}")

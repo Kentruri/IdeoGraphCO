@@ -150,6 +150,52 @@ def test_la_guardia_usa_todo_el_gold_reservado(tmp_path):
     assert pool == {0: ["s3"]}
 
 
+def _export_ls(path, etiquetas: dict[str, str]) -> None:
+    path.write_text(json.dumps([
+        {"data": {"id": aid, "title": "t", "text": "x"},
+         "annotations": [{"result": [{"from_name": "clase_dominante", "type": "choices",
+                                      "value": {"choices": [clase]}}]}]}
+        for aid, clase in etiquetas.items()
+    ]), encoding="utf-8")
+
+
+def test_sin_encuadre_cuenta_para_el_alfa_pero_no_entra_al_test(tmp_path, monkeypatch):
+    """`sin_encuadre` es una respuesta del anotador, no una de las 8 clases.
+
+    Si llegara a gold_set_v2_labeled.jsonl, prepare_splits lo metería al test
+    con una etiqueta que el modelo no puede predecir.
+    """
+    import sys
+
+    import src.core.paths
+
+    spec = importlib.util.spec_from_file_location(
+        "ingest_gold", ROOT / "scripts" / "ingest_gold.py")
+    ig = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ig)
+
+    anotacion = tmp_path / "annotation"
+    anotacion.mkdir()
+    (anotacion / "gold_set_v2.jsonl").write_text("\n".join(
+        json.dumps(_articulo(i)) for i in ("a1", "a2", "a3", "a4")) + "\n", encoding="utf-8")
+    kevin, juan = anotacion / "gold_set_v2_kevin.json", anotacion / "gold_set_v2_juan.json"
+    _export_ls(kevin, {"a1": "populismo", "a2": "sin_encuadre", "a3": "progresismo"})
+    _export_ls(juan, {"a1": "populismo", "a2": "sin_encuadre", "a3": "sin_encuadre",
+                      "a4": "globalismo"})
+
+    monkeypatch.setattr(src.core.paths, "ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["ingest_gold.py", "--books", str(kevin), str(juan)])
+    ig.main()
+
+    test = [json.loads(x) for x in
+            (anotacion / "gold_set_v2_labeled.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert {r["id"]: r["label"] for r in test} == {"a1": "populismo", "a4": "globalismo"}
+    # a3 (progresismo frente a sin_encuadre) es una discrepancia: va a consenso.
+    assert "a3" in (anotacion / "gold_set_v2_discrepancias.csv").read_text(encoding="utf-8")
+    reporte = (anotacion / "gold_set_v2_agreement_report.md").read_text(encoding="utf-8")
+    assert "| sin_encuadre (fuera del test) | 1 |" in reporte
+
+
 @pytest.mark.skipif(not (ROOT / "annotation" / "gold_set_v2_ids.json").exists(),
                     reason="no hay gold muestreado")
 def test_los_ids_del_gold_son_unicos_y_estan_completos():

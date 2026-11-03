@@ -185,7 +185,13 @@ def cmd_reporte(args: argparse.Namespace) -> None:
         ok = sum(a == b for a, b in con) / len(con)
         print(f"    donde el tribunal ve encuadre (n={len(con):,}): acuerdo {ok:.1%}   "
               f"α={krippendorff_alpha([list(p) for p in con]):+.3f}")
-    print(f"    el tribunal dice sin_encuadre en {sum(b == S.NF for _, b in pares) / len(pares):.1%}")
+    print(f"    el tribunal dice sin_encuadre en {sum(b == S.NF for _, b in pares) / len(pares):.1%}"
+          f" · el humano en {sum(a == S.NF for a, _ in pares) / len(pares):.1%}")
+    ambos = [(a, b) for a, b in pares if a in S.CLASES and b in S.CLASES]
+    if ambos:
+        ok = sum(a == b for a, b in ambos) / len(ambos)
+        print(f"    donde los dos ven encuadre (n={len(ambos):,}): acuerdo {ok:.1%}   "
+              f"α={krippendorff_alpha([list(p) for p in ambos]):+.3f}")
     print("\n  Confusiones más frecuentes (humano → tribunal):")
     for (a, b), n in collections.Counter(p for p in pares if p[0] != p[1]).most_common(10):
         print(f"    {a:<18} → {b:<18} {n:4}")

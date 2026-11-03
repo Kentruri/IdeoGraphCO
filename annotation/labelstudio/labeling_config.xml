@@ -20,6 +20,7 @@
       <Choice value="globalismo" hint="multilateralismo, normas globales"/>
       <Choice value="conservadurismo" hint="tradición, orden, autoridad"/>
       <Choice value="progresismo" hint="justicia social, derechos, reformas"/>
+      <Choice value="sin_encuadre" style="margin-top:12px" hint="noticia política sin encuadre ideológico: no entra al test"/>
     </Choices>
 
     <Header size="4" value="Notas (dudas, empates, razones — alimentan la sesión de consenso)"/>
