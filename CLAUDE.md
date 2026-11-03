@@ -60,7 +60,8 @@ interactivo?
 **Limitaciones declaradas** (citarlas, no resolverlas): subjetividad residual
 del ground truth (el modelo aprende un consenso intersubjetivo, no una
 "verdad"); dilución de señal por la agregación vectorial (encuadres agudos
-localizados en un párrafo pueden atenuarse en V_doc).
+localizados en un párrafo pueden atenuarse en V_doc). Las que surgieron en el
+desarrollo, sobre todo las de `sin_encuadre`, están en su sección abajo.
 
 ## Las 8 clases ideológicas (4 ejes teóricos del anteproyecto §5.3)
 
@@ -268,10 +269,60 @@ cómputo y decisiones de ingeniería:
   dataset lo convierte con `argmax` al vuelo vía `resolve_label_idx()`
   (con warning por empates). Deprecado: re-etiquetar con
   `python scripts/label.py --force`.
-- **Gold (humano) v2**: enteros 1-5 por eje + `clase_dominante` obligatoria
-  en el Excel. Doble anotación independiente con solape → Krippendorff
-  α ≥ 0.8 (`scripts/ingest_gold.py` + `src/agents/gold/agreement.py`);
-  discrepancias por consenso. Salida con `label_source: human*`.
+- **Gold (humano) v2**: `clase_dominante` obligatoria en Label Studio (el
+  Excel es respaldo; las escalas 1-5 son opcionales): una de las 8 clases o
+  `sin_encuadre` (ver abajo). Doble anotación independiente con solape →
+  Krippendorff α ≥ 0.8 (`scripts/ingest_gold.py` +
+  `src/agents/gold/agreement.py`); discrepancias por consenso. Salida con
+  `label_source: human*`.
+
+## sin_encuadre: opción de anotación, NO clase (decisión del autor, 3-nov-2026)
+
+Noticia política sin encuadre ideológico: no cumple ninguno de los tres
+criterios del umbral del codebook (voz propia evaluativa, selección asimétrica
+de voces, prueba de sustracción); p. ej. el boletín, el parte operativo o la
+nota de gestión. Existe como respuesta en Label Studio
+(`src.core.schema.NO_FRAME_LABEL`) y en el silver, pero **no entra ni a
+entrenamiento ni a test**: el Softmax sigue siendo de 8 y la pregunta de
+investigación habla de ocho clases. Comentarla con el director.
+
+**Por qué se decidió**: Juan anotó 207 artículos antes del codebook v1.1 y
+puso institucionalismo en el 82 %, casi siempre en textos neutros. Con el v1.1
+(22-24 oct) saltó 129 de 184 tareas porque la interfaz no tenía la opción, y
+un salto no distingue "sin encuadre" de "texto roto". Donde los jueces ven
+encuadre, Juan coincide con ellos en el 86 %. El α = 0,068 del tribunal sobre
+los 262 lo hunden esas 207 anotaciones antiguas: **no citarlo como el α de
+P1.3**. Juan las está rehaciendo.
+
+**Implementación**: `ingest_gold.py` la cuenta para el α (decidir si hay
+encuadre es parte de la codificación) y reporta además el α solo donde todos
+ven encuadre; no la escribe en `gold_set_v2_labeled.jsonl`. Si un anotador
+pone una clase y el otro `sin_encuadre`, va a consenso. Test de regresión en
+`tests/test_gold_isolation.py`. En Label Studio, "saltar" queda solo para
+texto roto o no político.
+
+**A tener en cuenta en la tesis** (limitaciones y hallazgos a reportar):
+- **El test queda solo con noticias con encuadre.** Al ritmo del v1.1 serían
+  unos 400-500 de los 1.301; las clases raras tendrán pocos ejemplos.
+  Reportar el F1 por clase con intervalos de confianza; con n ejemplos el
+  intervalo del recall es de unos ±1,96·√(0,21/n): ±0,28 con 10, ±0,09 con 100.
+- **El prototipo no sabe decir "neutra"**: ante una noticia sin encuadre igual
+  elige una de las 8. Declararlo como limitación. Se consideró un filtro
+  binario "¿tiene encuadre?" (redefinir la cabeza binaria del anteproyecto con
+  los `sin_encuadre` como negativos) y se descartó el 3-nov para no salir del
+  diseño de 8 clases: va como trabajo futuro. El tema 1 de
+  `docs/preguntas-director.md` (que el filtro LLM cumpla el papel del
+  clasificador binario de politicidad) sigue pendiente del director.
+- **El porcentaje sin encuadre es un hallazgo**: 22 % de lo juzgado en el
+  silver (que se minó buscando encuadre) frente a ~70 % del gold (muestra
+  natural del corpus).
+- **El α se reporta de dos formas**: sobre las 9 respuestas y solo donde los
+  anotadores ven encuadre (el desacuerdo es sobre SI hay encuadre más que
+  sobre CUÁL).
+- **Falta la doble anotación**: el gold lo anota solo Juan (solape 0). Para
+  α mínimo 0,8, Krippendorff (2019, fórmula de Bloch y Kraemer 1989) pide
+  ~120 artículos con doble anotación si las 8 clases fueran igual de
+  frecuentes y ~280 si la más rara es el 5 %.
 
 ## Aislamiento del gold (no negociable)
 
@@ -285,7 +336,9 @@ de PRUEBA del OE3. Dos reglas, ambas con test de regresión
   circulares). Hay que pasar `--allow-gold-in-silver` para saltarse la
   guarda.
 - **No entran a train/val.** `scripts/prepare_splits.py` los manda al split
-  de test y aplica además una guardia anti-fuga por near-duplicados.
+  de test y aplica además una guardia anti-fuga por near-duplicados. Los que
+  el humano marca `sin_encuadre` no van al test, pero siguen en
+  `gold_set_v2_ids.json`, así que tampoco entran a train/val.
 
 Ninguna de las dos fugas da error en tiempo de ejecución: producen números
 buenos y falsos.
