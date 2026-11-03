@@ -1,0 +1,16 @@
+# MrBERT-es — ModernBERT español del BSC (feb-2026), 150M parámetros.
+# EXPERIMENTO ADICIONAL, fuera del anteproyecto: contexto de 8.192 tokens, así
+# que lee el artículo entero sin trocear (99,1 % del corpus cabe). Mide si la
+# dilución del mean-pool sobre chunks de 512 (limitación declarada) cuesta
+# acierto. Correr con data.chunk_size=8192 (ver logs/cadena_largo.sh).
+model_name: "BSC-LT/MrBERT-es"
+encoder_alias: "mrbert-es"
+num_classes: 8
+
+learning_rate: 2e-5
+dropout: 0.1
+weight_decay: 0.01
+warmup_ratio: 0.1
+freeze_encoder_epochs: 0
+
+use_politicity_head: false

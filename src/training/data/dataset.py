@@ -123,8 +123,13 @@ class IdeoGraphDataset(Dataset):
         self.max_chunks = max_chunks
         self.chunking_strategy = chunking_strategy
 
-        self._cls_id = self.tokenizer.cls_token_id
-        self._sep_id = self.tokenizer.sep_token_id
+        # Los tokenizadores SentencePiece tipo RoBERTa (MrBERT-es) no declaran
+        # cls/sep: delimitan con <s> … </s>, que es lo que vieron al
+        # pre-entrenar y lo que el propio tokenizer antepone y pospone.
+        self._cls_id = (self.tokenizer.cls_token_id if self.tokenizer.cls_token_id is not None
+                        else self.tokenizer.bos_token_id)
+        self._sep_id = (self.tokenizer.sep_token_id if self.tokenizer.sep_token_id is not None
+                        else self.tokenizer.eos_token_id)
         self._pad_id = self.tokenizer.pad_token_id
         # XLNet coloca <cls> al FINAL de la secuencia (formato canónico de su
         # pre-entrenamiento: contenido <sep> <cls>); la familia BERT lo lleva

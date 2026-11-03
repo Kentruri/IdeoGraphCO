@@ -2253,6 +2253,16 @@ SOURCES: dict[str, dict] = {
         "url_filters": ["/noticias/"],
         "rss_feeds": [],  # OJO: sin RSS y solo 28 notas reales (el resto del sitemap son /candidatos y /100logros)
     },
+    "centrodemocratico": {
+        "url": "https://www.centrodemocratico.com",
+        "category": "institucional",
+        "mode": "sitemap",
+        # wp-sitemap (oct-2026): ~1.460 comunicados, ~880 columnas, ~290 boletines;
+        # el resto son tags, landings y fichas de congresistas
+        "url_filters": ["/comunicados-de-prensa/", "/opinion/", "/boletines-informativos/",
+                        "/columnas-de-opinion"],
+        "rss_feeds": ["https://www.centrodemocratico.com/feed/"],
+    },
     "unionpatriotica": {
         "url": "https://partido-up.org",
         "category": "institucional",

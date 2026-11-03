@@ -23,6 +23,7 @@ from omegaconf import DictConfig, OmegaConf
 from src.core.paths import CONFIGS_DIR, LOGS_DIR
 from src.training.data.datamodule import IdeoGraphDataModule
 from src.training.models.ideoclassifier import IdeoClassifier
+from src.training.class_weights import class_weights
 
 
 def _resolve_precision(cfg_precision: str) -> str | int:
@@ -78,6 +79,14 @@ def train(cfg: DictConfig) -> None:
         chunking_strategy=cfg.data.chunking_strategy,
     )
 
+    # --- Pesos por clase (desbalance del silver; ver src/training/class_weights.py) ---
+    pesos = None
+    modo_pesos = cfg.data.get("class_weights")
+    if modo_pesos:
+        conteo = datamodule.train_label_counts(cfg.model.num_classes)
+        pesos = class_weights(conteo, modo_pesos)
+        print(f"Pesos por clase ({modo_pesos}) sobre train {conteo}: {pesos}")
+
     # --- Modelo ---
     model = IdeoClassifier(
         model_name=encoder_model_name,
@@ -93,6 +102,8 @@ def train(cfg: DictConfig) -> None:
         chunk_size=cfg.data.chunk_size,
         chunk_stride=cfg.data.chunk_stride,
         max_chunks=cfg.data.max_chunks,
+        class_weights=pesos,
+        gradient_checkpointing=cfg.model.get("gradient_checkpointing", False),
     )
 
     # --- Checkpoints ---

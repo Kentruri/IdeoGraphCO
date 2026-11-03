@@ -30,6 +30,14 @@ chunk_stride: 384          # solapamiento (25%)
 max_chunks: 16             # cubre hasta el token 6.270 (p99 del corpus)
 chunking_strategy: "sliding_window"  # "truncate" | "sliding_window"
 
+# Pesos por clase en la Cross-Entropy de entrenamiento (null | "inverse" |
+# "sqrt_inverse"). Está aquí y no en configs/model/ porque depende de la
+# distribución de train y debe ser IDÉNTICO para los cuatro encoders del
+# benchmark. El silver va de ~20:1 (progresismo vs. doctrinarismo); sin pesos,
+# el F1 macro del OE3 se hunde en las clases chicas. sqrt_inverse corrige el
+# grueso sin multiplicar por 20 el ruido de las etiquetas más escasas.
+class_weights: "sqrt_inverse"
+
 # DataLoader
 # batch_size 8 + accumulate_grad_batches 2 (en configs/trainer) = batch
 # EFECTIVO de 16, el mismo de antes. El collate rellena todos los artículos

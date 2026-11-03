@@ -9,6 +9,7 @@ Ninguna de las dos cosas da error en tiempo de ejecución: producen números
 buenos y falsos. De ahí estos tests.
 """
 
+import importlib.util
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -113,6 +114,40 @@ def test_prepare_splits_prefiere_el_gold_vigente():
     i2 = fuente.index("gold_set_v2_ids.json")
     i1 = fuente.index("gold_set_v1_ids.json")
     assert i2 < i1, "el v2 debe consultarse antes que el v1"
+
+
+def _cargar_prepare_splits():
+    spec = importlib.util.spec_from_file_location(
+        "prepare_splits", ROOT / "scripts" / "prepare_splits.py")
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def test_la_guardia_usa_todo_el_gold_reservado(tmp_path):
+    """Regresión: la guardia anti-fuga comparaba solo con el test armado.
+
+    En modo desarrollo ese test sale vacío y ningún casi-duplicado del gold
+    se excluía de train/val; con el gold a medio anotar, solo se cubría la
+    parte anotada.
+    """
+    ps = _cargar_prepare_splits()
+    gold = {"id": "g1", "title": "Reforma pensional aprobada", "text": "Texto del gold."}
+    (tmp_path / "gold_set_v2_ids.json").write_text(json.dumps(["g1"]), encoding="utf-8")
+    (tmp_path / "gold_set_v2.jsonl").write_text(json.dumps(gold) + "\n", encoding="utf-8")
+
+    ids, registros = ps.load_reserved_gold(tmp_path)
+    assert ids == {"g1"}
+    assert [r["id"] for r in registros] == ["g1"]
+
+    by_id = {
+        "s1": {"id": "s1", "title": "Otro titular", "text": "Texto del gold."},
+        "s2": {"id": "s2", "title": "REFORMA  pensional aprobada", "text": "Otro texto"},
+        "s3": {"id": "s3", "title": "Nada que ver", "text": "Texto limpio"},
+    }
+    pool = {0: ["s1", "s2", "s3"]}
+    assert ps.exclude_leaks(pool, by_id, registros) == 2
+    assert pool == {0: ["s3"]}
 
 
 @pytest.mark.skipif(not (ROOT / "annotation" / "gold_set_v2_ids.json").exists(),

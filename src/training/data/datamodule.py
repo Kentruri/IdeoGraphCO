@@ -21,7 +21,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset, random_split
 
-from src.training.data.dataset import IdeoGraphDataset, collate_articles
+from src.training.data.dataset import (
+    IdeoGraphDataset,
+    collate_articles,
+    resolve_label_idx,
+)
 
 
 def _seed_worker(worker_id: int) -> None:
@@ -156,6 +160,19 @@ class IdeoGraphDataModule(L.LightningDataModule):
                 )
             resolved[split_name] = [id_to_index[aid] for aid in ids]
         return resolved
+
+    def train_label_counts(self, num_classes: int) -> list[int]:
+        """Artículos por clase en el split de TRAIN (para los pesos de la pérdida).
+
+        Se cuenta sobre train y no sobre todo el dataset: los pesos deben
+        reflejar lo que el modelo ve al optimizar, no el test.
+        """
+        self.setup("fit")
+        counts = [0] * num_classes
+        base = self.train_ds.dataset
+        for i in self.train_ds.indices:
+            counts[resolve_label_idx(base.articles[i])] += 1
+        return counts
 
     def _build_generator(self) -> torch.Generator:
         g = torch.Generator()

@@ -30,6 +30,7 @@ Uso típico (el agente como uno de los jueces):
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -51,6 +52,7 @@ from src.agents.silver.verdicts import (  # noqa: E402
 )
 from src.core.paths import RAW_DIR, ROOT, SILVER_DIR  # noqa: E402
 from src.core.schema import CLASS_TO_IDX, IDEOLOGY_CLASSES  # noqa: E402
+from src.core.text import strip_outlet_suffix  # noqa: E402
 
 BATCH_DIR = SILVER_DIR / "agent_batches"
 STATE_PATH = BATCH_DIR / "silver_state.json"
@@ -64,13 +66,19 @@ JUDGE_FAMILY = "claude"
 # Cuánto texto ve el agente. La clase dominante se decide por el encuadre, que
 # el codebook sitúa en el titular y el primer tercio; mandar el artículo
 # completo multiplicaría el coste en contexto sin mejorar la decisión.
-HEAD_CHARS = 2200
+# `--full` lo desactiva (HEAD_CHARS = None) para las corridas de calibración,
+# donde sí interesa ver si el recorte cambiaba la etiqueta.
+HEAD_CHARS: int | None = 2200
 
 # Presupuesto por tanda, en tokens de TEXTO entregado. No es el contexto
 # entero: el agente gasta además instrucciones y sus propias respuestas.
 DEFAULT_BUDGET_TOKENS = 120_000
 
 DOUBT_TOKEN = "dud"
+# Etiqueta propia del codebook v1.1 (§2.1, regla 3): el texto es político pero
+# ninguna de las ocho dimensiones lo estructura. No es un voto nulo como `dud`
+# — es una afirmación sobre el texto, y se cuenta para el consenso.
+NO_FRAME = "sin_encuadre"
 ALIASES = {
     "pop": "populismo", "inst": "institucionalismo", "pers": "personalismo",
     "doc": "doctrinarismo", "sob": "soberanismo", "glob": "globalismo",
@@ -135,6 +143,29 @@ def load_gold_ids() -> set[str]:
 
 # ---------------------------------------------------------------- lotes --
 
+
+# `strip_outlet_suffix` (src/core/text.py) deja cola en el 8,6 % del corpus:
+# no cubre » ni ‣, solo quita el ÚLTIMO de los sufijos dobles, y descarta las
+# colas en minúscula o que empiezan por dígito. Aquí se aprieta más porque el
+# lote del juez debe ocultar la fuente; `build_model_input` no se toca, que es
+# contrato con el repo de inferencia.
+# El espacio ANTES del separador es obligatorio: con `\s*` el guion
+# intrapalabra se tomaba por separador y "Air-e" quedaba en "Air",
+# "Colombia-EE.UU." en "Colombia" y "Covid-19" en "Covid".
+_COLA = re.compile(r"\s+[|»‣–—-]\s*[^|»‣–—]{2,60}$")
+
+
+def _sin_medio(title: str) -> str:
+    """Quita hasta tres sufijos de medio encadenados, sin dejar el título vacío."""
+    out = strip_outlet_suffix(title)
+    for _ in range(3):
+        recorte = _COLA.sub("", out).rstrip(" -–—|»‣,")
+        if len(recorte) < 15 or recorte == out:
+            break
+        out = recorte
+    return out or title
+
+
 def write_batch(sample: list[dict], batch_num: int, input_path: Path) -> tuple[Path, int]:
     BATCH_DIR.mkdir(parents=True, exist_ok=True)
     txt_path = BATCH_DIR / f"lote_{batch_num:03d}.txt"
@@ -142,8 +173,13 @@ def write_batch(sample: list[dict], batch_num: int, input_path: Path) -> tuple[P
 
     lines, manifest = [], []
     for n, article in enumerate(sample, start=1):
-        title = (article.get("title") or "(sin título)").strip()
-        body = " ".join((article.get("text") or "").split())[:HEAD_CHARS]
+        # Sin el sufijo del medio: es constante por fuente, y el codebook
+        # prohíbe etiquetar por la fuente justamente porque sería una huella.
+        # El titular crudo lo conservaba en el 37 % de los casos.
+        title = _sin_medio((article.get("title") or "").strip()) or "(sin título)"
+        body = " ".join((article.get("text") or "").split())
+        if HEAD_CHARS is not None:
+            body = body[:HEAD_CHARS]
         # Sin la fuente: el codebook exige juzgar por el texto, y saber de
         # qué medio viene sesga el encuadre que uno cree ver.
         lines += [f"[{n}]", title, body, ""]
@@ -184,6 +220,8 @@ def parse_decisions(text: str) -> tuple[dict[int, dict], list[str]]:
         crudo = parts[1].lower()
         if crudo in (DOUBT_TOKEN, "duda", "?"):
             clase = None          # abstención explícita: se registra sin voto
+        elif crudo in (NO_FRAME, "sin", "ninguna", "none"):
+            clase = NO_FRAME
         else:
             clase = ALIASES.get(crudo, crudo)
             if clase not in CLASS_TO_IDX:
@@ -223,7 +261,9 @@ def cmd_next(args: argparse.Namespace) -> None:
     articles = load_corpus(input_path)
     total = len(articles)
     # El gold es el conjunto de PRUEBA: nunca recibe etiqueta silver.
-    excluidos = load_gold_ids()
+    # --allow-gold solo se usa en CALIBRACIÓN, con --verdicts fuera de
+    # data/silver: medir al juez contra el humano no es etiquetar el test.
+    excluidos = set() if getattr(args, "allow_gold", False) else load_gold_ids()
     ya_votados = judged_ids(VERDICTS_PATH, judge=JUDGE_NAME)
 
     pendientes = [a for a in articles
@@ -245,7 +285,8 @@ def cmd_next(args: argparse.Namespace) -> None:
         pendientes = pendientes[:restante]
 
     batch = pendientes[:args.size]
-    estimado = sum(min(len(a.get("text") or ""), HEAD_CHARS)
+    _tope = HEAD_CHARS if HEAD_CHARS is not None else 10**9
+    estimado = sum(min(len(a.get("text") or ""), _tope)
                    + len(a.get("title") or "") for a in batch) // 4
 
     # El corte se decide ANTES de entregar: entregar y avisar después ya
@@ -315,9 +356,14 @@ def cmd_ingest(args: argparse.Namespace) -> None:
             judge=JUDGE_NAME, model=args.model, family=JUDGE_FAMILY,
             dominant=clase, ok=clase is not None,
             error=None if clase else "duda del anotador",
-            scores={c: (d["confianza"] if c == clase else
-                        round((1 - d["confianza"]) / 7, 4)) for c in IDEOLOGY_CLASSES}
-            if clase else {},
+            # El reparto (1-c)/7 presupone que la dominante es una de las
+            # ocho; con `sin_encuadre` daba ocho puntuaciones idénticas. Se
+            # guarda entonces una sola entrada con su propio nombre: no
+            # colisiona con las ocho y conserva la confianza tal cual.
+            scores=({c: (d["confianza"] if c == clase else
+                         round((1 - d["confianza"]) / 7, 4))
+                     for c in IDEOLOGY_CLASSES}
+                    if clase in CLASS_TO_IDX else {clase: d["confianza"]}),
         )
         append_verdict(VERDICTS_PATH, item["id"], verdict)
         conteo[clase or DOUBT_TOKEN] += 1
@@ -384,7 +430,7 @@ def cmd_build(args: argparse.Namespace) -> None:
                 "id": aid, "text": raw["text"], "title": raw.get("title", ""),
                 "source": raw.get("source", ""), "category": raw.get("category", ""),
                 "url": raw.get("url", ""), "date": raw.get("date"),
-                "label": c.label, "label_idx": CLASS_TO_IDX[c.label],
+                "label": c.label, "label_idx": CLASS_TO_IDX.get(c.label, -1),
                 "label_source": "silver-ensemble",
                 "judge_models": [v.model for v in votos[aid] if v.ok],
                 "consensus": c.to_dict(),
@@ -438,6 +484,24 @@ def cmd_status(args: argparse.Namespace) -> None:
         print(f"    ⚠ lote {state['pending_batch']} entregado y SIN ingerir")
 
 
+def configure(args: argparse.Namespace) -> None:
+    """Reapunta los globales según el juez. Permite tres jueces a la vez."""
+    global BATCH_DIR, STATE_PATH, VERDICTS_PATH, JUDGE_NAME, HEAD_CHARS
+    if getattr(args, "judge", None):
+        JUDGE_NAME = args.judge
+    if getattr(args, "workdir", None):
+        BATCH_DIR = Path(args.workdir)
+        STATE_PATH = BATCH_DIR / "state.json"
+    if getattr(args, "verdicts", None):
+        VERDICTS_PATH = Path(args.verdicts)
+    if getattr(args, "full", False):
+        HEAD_CHARS = None
+    if getattr(args, "allow_gold", False) and "silver" in str(VERDICTS_PATH.parent):
+        raise SystemExit(
+            "✗ --allow-gold con --verdicts dentro de data/silver/ contaminaría "
+            "el conjunto de prueba. Apunta --verdicts a annotation/calibration/.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="El agente de Claude Code como juez del silver")
@@ -477,7 +541,20 @@ def main() -> None:
     p_st.add_argument("--input", type=str, default=None)
     p_st.set_defaults(func=cmd_status)
 
+    for _p in (p_next, p_ing, p_build, p_st):
+        _p.add_argument("--judge", type=str, default=None,
+                        help="Nombre del juez: separa cursor y votos")
+        _p.add_argument("--workdir", type=str, default=None,
+                        help="Carpeta de lotes y cursor de ESTE juez")
+        _p.add_argument("--verdicts", type=str, default=None,
+                        help="Almacén de votos (fuera de data/silver en calibración)")
+        _p.add_argument("--full", action="store_true",
+                        help="Artículo completo, sin recorte")
+        _p.add_argument("--allow-gold", action="store_true",
+                        help="CALIBRACIÓN: no excluir el gold (exige --verdicts fuera de data/silver)")
+
     args = parser.parse_args()
+    configure(args)
     args.func(args)
 
 

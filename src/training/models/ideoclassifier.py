@@ -44,6 +44,33 @@ from transformers import AutoModel, get_linear_schedule_with_warmup
 from src.core.schema import IDEOLOGY_CLASSES, NUM_CLASSES
 
 
+def _checkpoint_layers(encoder: nn.Module) -> None:
+    """Gradient checkpointing capa a capa para encoders que no lo traen.
+
+    Mismo mecanismo que `gradient_checkpointing_enable` de transformers:
+    cada capa se recalcula en el backward. `use_reentrant=False` admite los
+    kwargs y los `None` de la firma de XLNetLayer, y el estado del RNG se
+    preserva, así que el dropout del recálculo coincide con el del forward.
+    """
+    layers = getattr(encoder, "layer", None)
+    if not isinstance(layers, nn.ModuleList):
+        raise ValueError(
+            f"{type(encoder).__name__}: no hay gradient checkpointing nativo ni "
+            "una lista de capas `.layer` que envolver."
+        )
+    from torch.utils.checkpoint import checkpoint
+
+    for layer in layers:
+        original = layer.forward
+
+        def forward(*args, _orig=original, _layer=layer, **kwargs):
+            if _layer.training and torch.is_grad_enabled():
+                return checkpoint(_orig, *args, use_reentrant=False, **kwargs)
+            return _orig(*args, **kwargs)
+
+        layer.forward = forward
+
+
 class IdeoClassifier(L.LightningModule):
     """Encoder + agregación mean-pool + cabeza softmax 8-way."""
 
@@ -60,6 +87,8 @@ class IdeoClassifier(L.LightningModule):
         chunk_size: int = 512,
         chunk_stride: int = 384,
         max_chunks: int = 16,
+        class_weights: list[float] | None = None,
+        gradient_checkpointing: bool = False,
     ) -> None:
         super().__init__()
         # El troceo es de DATOS, no del modelo, pero viaja en los
@@ -73,6 +102,25 @@ class IdeoClassifier(L.LightningModule):
 
         # --- Encoder ---
         self.encoder = AutoModel.from_pretrained(model_name)
+        # from_pretrained devuelve el encoder en modo eval, y Lightning ≥2.3
+        # respeta el modo de cada submódulo al empezar el fit (ya no llama a
+        # .train()): sin esto el dropout interno del encoder quedaba apagado
+        # durante todo el entrenamiento.
+        self.encoder.train()
+        if gradient_checkpointing:
+            # Recalcula las activaciones del encoder en el backward en vez de
+            # guardarlas: ~30 % más lento y mismo resultado, pero un batch con
+            # artículos largos (hasta 8 × 16 chunks de 512) cabe en la GPU de
+            # un portátil.
+            if getattr(self.encoder, "supports_gradient_checkpointing", False):
+                self.encoder.gradient_checkpointing_enable(
+                    gradient_checkpointing_kwargs={"use_reentrant": False},
+                )
+            else:
+                # XLNet no lo trae en transformers: sin esto pedía ~26 GB con
+                # batch 1 × 16 y en un Mac de 24 GB se arrastraba en swap
+                # (~7 h por época). Se envuelve cada capa a mano.
+                _checkpoint_layers(self.encoder)
         hidden_size: int = self.encoder.config.hidden_size
         # XLNet lleva <cls> al FINAL de la secuencia; el dataset arma los
         # chunks en ese orden (misma detección, vía el nombre del tokenizer).
@@ -87,6 +135,17 @@ class IdeoClassifier(L.LightningModule):
         self.politicity_head: nn.Linear | None = None
         if use_politicity_head:
             self.politicity_head = nn.Linear(hidden_size, 2)
+
+        # --- Pesos por clase de la pérdida (src/training/class_weights.py) ---
+        # Solo pesan en ENTRENAMIENTO: la pérdida de validación queda sin
+        # ponderar para que siga comparándose entre corridas, y la selección
+        # de modelo va por f1_macro de todos modos. No persiste en el
+        # state_dict: viaja en los hiperparámetros, como el troceo.
+        self.register_buffer(
+            "loss_weights",
+            torch.tensor(class_weights, dtype=torch.float) if class_weights else None,
+            persistent=False,
+        )
 
         # --- Métricas (separadas por split para no mezclar acumuladores) ---
         self.val_metrics = self._build_metric_bundle("val")
@@ -143,27 +202,44 @@ class IdeoClassifier(L.LightningModule):
         """
         B, K, L = input_ids.shape
 
-        # Aplanar (B*K, L) para pasar por el encoder en batch único
+        # Aplanar (B*K, L) y pasar por el encoder SOLO los chunks reales: el
+        # collate rellena cada artículo hasta el K mayor del batch, y esos
+        # chunks vacíos costaban lo mismo que los reales (un artículo de 16
+        # chunks convertía un batch de 8 en 128 secuencias de 512). Su
+        # embedding se descartaba igual por chunk_mask, así que el resultado
+        # no cambia.
         flat_ids = input_ids.reshape(B * K, L)
         flat_mask = attention_mask.reshape(B * K, L)
+        real = chunk_mask.reshape(B * K).nonzero(as_tuple=True)[0]
+        # El dataset rellena cada chunk a la derecha hasta chunk_size; se
+        # recorta hasta el chunk real más largo. El relleno está enmascarado,
+        # así que la salida no cambia, pero con un encoder de contexto largo
+        # (chunk_size 8192) un artículo típico de ~900 tokens dejaba de
+        # costar como uno de 8192.
+        # El ancho se redondea a múltiplos de 256: con un ancho distinto en
+        # cada batch, el allocator de MPS acumulaba bloques de cada tamaño sin
+        # reutilizarlos (10,7 GB "reservados" para 5 GB reales con MrBERT-es).
+        real_mask = flat_mask[real]
+        width = int(real_mask.sum(dim=1).max())
+        width = min(L, -(-width // 256) * 256)
+        real_mask = real_mask[:, :width]
 
-        # [CLS] embedding de cada chunk: (B*K, H)
+        # [CLS] embedding de cada chunk real: (R, H)
         hidden = self.encoder(
-            input_ids=flat_ids,
-            attention_mask=flat_mask,
+            input_ids=flat_ids[real, :width],
+            attention_mask=real_mask,
         ).last_hidden_state
         if self._cls_at_end:
             # <cls> es el último token real (padding a la derecha): indexar
-            # por longitud real de cada chunk. Los chunks de relleno del
-            # collate (mask toda en 0) usan idx 0; su embedding se descarta
-            # después por chunk_mask.
-            idx = flat_mask.sum(dim=1).clamp(min=1) - 1
+            # por longitud real de cada chunk.
+            idx = real_mask.sum(dim=1).clamp(min=1) - 1
             rows = torch.arange(hidden.size(0), device=hidden.device)
-            cls_emb = hidden[rows, idx, :]
+            real_cls = hidden[rows, idx, :]
         else:
-            cls_emb = hidden[:, 0, :]
+            real_cls = hidden[:, 0, :]
 
-        # Reagrupar por artículo: (B, K, H)
+        # Reagrupar por artículo: (B, K, H); los chunks de relleno quedan en 0
+        cls_emb = real_cls.new_zeros(B * K, real_cls.size(-1)).index_copy(0, real, real_cls)
         cls_emb = cls_emb.reshape(B, K, -1)
 
         # Agregación V_doc = mean sobre chunks REALES (ignorando padding)
@@ -180,13 +256,20 @@ class IdeoClassifier(L.LightningModule):
     # ------------------------------------------------------------------
     # Training
     # ------------------------------------------------------------------
+    def on_train_batch_end(self, outputs, batch: dict, batch_idx: int) -> None:
+        # En MPS el allocator no devuelve los bloques cacheados hasta llegar al
+        # tope; con artículos de largo variable eso acaba en OOM a mitad de
+        # época. Vaciar la caché cada 50 batches cuesta poco y lo evita.
+        if self.device.type == "mps" and batch_idx % 50 == 0:
+            torch.mps.empty_cache()
+
     def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
         logits = self(
             batch["input_ids"],
             batch["attention_mask"],
             batch["chunk_mask"],
         )
-        loss = F.cross_entropy(logits, batch["labels"])
+        loss = F.cross_entropy(logits, batch["labels"], weight=self.loss_weights)
         self.log("train/loss", loss, prog_bar=True)
         return loss
 

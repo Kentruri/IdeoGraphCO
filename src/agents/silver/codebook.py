@@ -36,7 +36,7 @@ SCALE_LEVELS: dict[str, str] = {
 AXIS_DEFINITIONS: dict[str, dict] = {
     "personalismo": {
         "definition": (
-            "Grado en que el texto enfatiza a un líder individual (su carisma, voluntad, decisiones o figura) como eje central de la política, por encima de partidos o instituciones"
+            "Grado en que el texto enfatiza a un líder individual (su carisma, voluntad, decisiones o figura) como eje central de la política, por encima de partidos o instituciones. Cuenta tanto en POSITIVO (exaltación, culto, heroización) como en NEGATIVO: una pieza estructurada entera sobre la figura de un líder para demolerla —su hoja de vida, sus afectos, su conducta privada— también hace del líder el eje de la política"
         ),
         "markers": [
             "Deícticos de primera persona (yo decidí, mi gobierno, lo logró, visión de, el presidente ordenó, su pueblo)",
@@ -71,17 +71,22 @@ AXIS_DEFINITIONS: dict[str, dict] = {
     },
     "institucionalismo": {
         "definition": (
-            "Grado en que el texto enfatiza las instituciones, procesos legales formales y el Estado de derecho como ejes de la acción política. La legitimidad se ancla en normas, procedimientos y organismos formales, no en voluntades individuales"
+            "Grado en que el texto ARGUMENTA que las instituciones, los procesos legales formales y el Estado de derecho deben ser los ejes de la acción política. La legitimidad se ancla en normas, procedimientos y organismos formales, no en voluntades individuales"
         ),
         "markers": [
-            "Léxico jurídico (mediante decreto, conforme a la ley, artículo 230)",
-            "Referencias a entidades del Estado (Congreso, Corte Constitucional, Procuraduría, JEP, Fiscalia, DIAN, etc) como actores centrales",
-            "Descripción de procesos formales (trámite legislativo, ponencia, debate)",
-            "Formalidad burocrática y neutralidad en el tono",
-            "Citación de normas, sentencias, resoluciones",
-            "Actores institucionales como sujeto (la Corte determinó, el Congreso aprobó)",
-            "Se valora explícitamente la separación de poderes, el debido proceso o la independencia de órganos de control",
+            "Se argumenta que la VALIDEZ de una decisión política depende de que se haya seguido el procedimiento debido",
+            "Se valora explícitamente la separación de poderes, el debido proceso o la independencia de los órganos de control",
             "Se critica o alaba a actores por respetar o vulnerar reglas institucionales",
+            "Se señala una irregularidad PROCEDIMENTAL como el problema central del asunto relatado",
+            "Se condenan las vías de hecho, los decretos por fuera del trámite legislativo o los saltos de la legalidad",
+            "Se apela al pluralismo o al respeto de las reglas del juego frente a la voluntad mayoritaria o la urgencia política",
+            "Léxico jurídico (mediante decreto, conforme a la ley, artículo 230) CUANDO SOSTIENE EL ARGUMENTO, no cuando solo describe el hecho relatado",
+        ],
+        "non_markers": [
+            "Que una entidad pública sea el sujeto de la noticia ('la Alcaldía entregó', 'el Congreso aprobó', 'la Agencia analizará'): es el modo normal de narrar la gestión pública en Colombia, no un encuadre",
+            "El tono neutro, formal o burocrático: la neutralidad es la AUSENCIA de encuadre, y así se define el nivel más bajo de los otros siete ejes",
+            "La mención de una norma, sentencia o resolución como dato del hecho relatado",
+            "Que el tema sea legislativo, judicial o administrativo: el tema no es el encuadre",
         ],
         "scale": {
             "1": "No hay referencias a instituciones, leyes ni procedimientos formales; se ignoran o desestiman esos canales",
@@ -142,7 +147,7 @@ AXIS_DEFINITIONS: dict[str, dict] = {
     },
     "doctrinarismo": {
         "definition": (
-            "Grado en que el texto presenta posiciones políticas como derivadas de un cuerpo ideológico rígido y cerrado (de cualquier signo), al que se apela como autoridad o guía, mostrando resistencia a la adaptación pragmática o al diálogo con posturas distintas"
+            "Grado en que el texto presenta posiciones políticas como derivadas de un cuerpo ideológico rígido y cerrado (de cualquier signo), al que se apela como autoridad o guía, mostrando resistencia a la adaptación pragmática o al diálogo con posturas distintas El eje es SIMÉTRICO: el antimarxismo, el anticomunismo y la doctrina contrainsurgente cuentan igual que la doctrina de izquierda. Lo que activa la dimensión es que un cuerpo ideológico cerrado funcione como autoridad inapelable, no de qué signo sea"
         ),
         "markers": [
             "Uso frecuente de palabras (-ismos) (socialismo, neoliberalismo, marxismo, uribismo)",
@@ -378,6 +383,165 @@ CALIBRATION_RULES: list[str] = [
 ]
 
 # ---------------------------------------------------------------------------
+# Umbral de encuadre (v1.2)
+# ---------------------------------------------------------------------------
+# La calibración con tres jueces sobre los 1.301 del gold midió que el 79 % del
+# desacuerdo entre anotadores NO es sobre qué encuadre tiene un texto, sino
+# sobre si tiene alguno. El codebook definía las ocho clases con cuidado y
+# dejaba ese umbral sin operacionalizar. Esta regla lo fija, y el discriminador
+# —la voz propia— es el que los tres jueces propusieron por separado.
+
+UMBRAL_RULES: str = """\
+ANTES de elegir entre las ocho clases, decide si el texto TIENE encuadre. Es
+la decisión que más desacuerdo produce, así que va primero y con criterio
+propio.
+
+HAY encuadre si se cumple al menos UNA de estas tres:
+
+1. VOZ PROPIA EVALUATIVA. El texto afirma, fuera de cita, cómo DEBERÍAN ser
+   las cosas, no solo qué pasó. Se detecta en: el titular o los intertítulos
+   toman postura; hay adjetivación valorativa que no es de nadie citado; el
+   texto califica a los actores ("irresponsable", "histórico", "golpazo").
+
+2. SELECCIÓN ASIMÉTRICA. El texto reproduce una sola voz de una disputa real
+   y le da el espacio, sin contrapeso. A quién se cita y cuánto ES la postura
+   del medio.
+
+3. PRUEBA DE SUSTRACCIÓN. Si retiras la dimensión ideológica, el argumento se
+   cae. Si solo cambia el protagonista, no se cae: no hay encuadre.
+
+NO hay encuadre —responde `sin_encuadre`— cuando:
+
+- Una entidad narra su PROPIA gestión, por cargado de valores que esté el
+  vocabulario. Celebrar las cifras propias no es defender un principio.
+- El texto RELATA un hecho, por ideológico que sea el hecho. Un atentado, un
+  fallo o una marcha no transmiten su carga al texto que los reporta.
+- Un boletín resume una norma, una circular o una sentencia sin glosarla.
+- Un parte operativo enumera resultados sin valoración añadida.
+
+CASO APARTE: si el texto expone dos posturas enfrentadas sin voz propia, es
+`sin_encuadre` pero no es un boletín. Son los textos donde mejor se aprende el
+contraste y conviene poder recuperarlos."""
+
+
+# ---------------------------------------------------------------------------
+# La sustancia: qué se defiende, aunque el tono sea neutro
+# ---------------------------------------------------------------------------
+# Tercera capa de lectura, después de los marcadores y de la entonación. La
+# regla «el tema no es el encuadre» (§1.5 del codebook impreso) se escribió
+# para que `institucionalismo` dejara de tragarse todo texto donde apareciera
+# una entidad pública, y para eso es correcta. Pero quedó demasiado absoluta:
+# hay posiciones que un texto sostiene sin subir una sola vez el tono.
+
+SUSTANCIA_RULES: str = """\
+El TEMA no es el encuadre, pero la POSICIÓN sobre el tema sí — y a veces esa
+posición está solo en cómo se presenta el hecho, con el tono más neutro del
+mundo.
+
+Pregúntate: **¿qué da por bueno este texto sin discutirlo?**
+
+- Una nota administrativa sobre un avance en derechos —LGBTI, pueblos étnicos,
+  mujeres, víctimas— que presenta ese avance COMO un avance, es `progresismo`
+  aunque el tono sea de boletín y el sujeto sea un juzgado. Dar por sentado que
+  ampliar derechos es bueno ES la postura; en Colombia eso se disputa.
+- Sostener que el salario mínimo debe subir, que hay que ampliar un subsidio o
+  que el Estado debe intervenir, es una postura redistributiva: `progresismo`
+  si el argumento es de justicia o derechos, `populismo` si lo que lo mueve es
+  el pueblo frente a quien se lo niega.
+- Lo simétrico vale igual: dar por sentado que la inversión extranjera es buena
+  es `globalismo`; que la mano dura es la respuesta, `conservadurismo`; que lo
+  nuestro debe protegerse de lo de fuera, `soberanismo`.
+
+La prueba: **¿podría un medio del otro lado publicar esto mismo sin cambiarlo?**
+Si la respuesta es no —porque la premisa que no se discute es la que ese otro
+medio discutiría— hay encuadre, y es el de la premisa.
+
+Cuidado con el límite, que es donde se equivoca fácil: que el texto MENCIONE un
+derecho, un subsidio o una inversión no basta. Hace falta que lo dé por bueno,
+lo celebre o lo reclame. Informar de que un juzgado falló no es tomar partido;
+presentar el fallo como una conquista, sí."""
+
+
+# ---------------------------------------------------------------------------
+# La entonación: leer la postura, no solo los marcadores
+# ---------------------------------------------------------------------------
+# La calibración midió que los jueces aplicaban el codebook de forma demasiado
+# literal: buscaban marcadores léxicos y, si no los veían, respondían
+# `sin_encuadre`. Pero la ideología de un texto vive muchas veces en CONTRA DE
+# QUÉ se escribe y con qué tono, no en el vocabulario que usa. Es la distinción
+# que la literatura de stance detection separa de la de sentimiento.
+
+TONO_RULES: str = """\
+Antes de responder `sin_encuadre`, haz una última lectura: la de la POSTURA.
+
+Un texto puede no traer ni un marcador de la lista y tener encuadre evidente
+por **a quién golpea y cómo**. La pregunta es: *¿desde dónde está escrito
+esto?*
+
+- Si el texto se ensaña con la izquierda —ridiculiza al gobierno progresista,
+  llama «mamertos» o «castrochavistas» a sus adversarios, trata la protesta
+  social como desorden, presenta el cambio como amenaza— está escrito desde la
+  derecha. Suele ser `conservadurismo`, y si el eje es la autoridad y el orden
+  por encima de las reglas, mira también `populismo` (de derecha) o
+  `personalismo`.
+- Si se ensaña con el empresariado, las élites o «los de siempre», está escrito
+  desde la izquierda: `progresismo` o `populismo` según si el motor es el
+  derecho reivindicado o la dicotomía pueblo/élite.
+- Si ataca a un líder por su persona —su vida, sus afectos, su carácter— el eje
+  es `personalismo`, lo defienda o lo demuela.
+- Si descalifica a quien piensa distinto apelando a un cuerpo de ideas cerrado
+  —anticomunismo, antimarxismo, pureza revolucionaria— mira `doctrinarismo`.
+
+Señales de entonación, todas fuera de cita:
+adjetivación cargada, ironía y comillas de desprecio, diminutivos
+despectivos, apodos, selección de qué se calla, y el orden en que se
+presentan los bandos.
+
+`sin_encuadre` es para el texto que de verdad no toma partido: el boletín, el
+parte operativo, la nota de gestión. **No es el cajón del texto cuyo encuadre
+no trae las palabras del codebook.** Si al leerlo notas de qué lado está, aunque
+no sepas señalar el marcador, ese lado es la respuesta: dilo y baja la
+confianza."""
+
+
+# ---------------------------------------------------------------------------
+# Lo macroeconómico (Anteproyecto §4.1)
+# ---------------------------------------------------------------------------
+# El Anteproyecto declara que las posturas macroeconómicas no se omiten sino
+# que quedan "operativamente subsumidas" en las ocho clases, y dice CÓMO. Ese
+# mapeo nunca llegó al codebook, y la calibración con tres jueces midió la
+# consecuencia: los textos de ortodoxia fiscal, gremios y reformas tributarias
+# caían en `conservadurismo` con confianza 0,35-0,50, o en `sin_encuadre`.
+
+MACRO_RULES: str = """\
+Las posturas MACROECONÓMICAS no tienen eje propio: se subsumen en las ocho
+clases según este mapeo, que fija el Anteproyecto (§4.1).
+
+- Redistribución, intervención estatal, gasto social, protección del empleo,
+  empresa pública → `progresismo` si el argumento es de justicia social o
+  derechos; → `soberanismo` si es de autonomía productiva nacional
+  (proteccionismo, autosuficiencia, control de recursos propios).
+- Libre mercado, desregulación, disciplina fiscal, austeridad, seguridad
+  jurídica para el inversionista → `conservadurismo` si el argumento es de
+  orden y ortodoxia; → `globalismo` si es de apertura, integración o
+  estándares internacionales.
+
+Dos cautelas, porque la mitad de los errores medidos vienen de aquí:
+
+1. El mapeo aplica cuando el texto DEFIENDE la postura en su propia voz, no
+   cuando la REPORTA. Y la trampa no es la cifra suelta: es la nota de gestión
+   cuyo OBJETO es una política macro —un plan de austeridad, una transferencia
+   social, un subsidio— pero cuya VOZ solo la anuncia. Ahí la postura está en
+   el hecho, no en el texto, y usar el mapeo sería etiquetar por el tema, que
+   es exactamente lo que el codebook prohíbe. Un informe del DANE sobre la
+   inflación no es conservadurismo; el boletín que anuncia el plan de
+   austeridad tampoco; una columna que exige disciplina fiscal sí.
+2. Elige entre los dos destinos por el ARGUMENTO, no por el tema. «Hay que
+   frenar las importaciones de leche» es soberanismo; «hay que abrir el
+   mercado lácteo» es globalismo; ambos hablan de lo mismo."""
+
+
+# ---------------------------------------------------------------------------
 # Regla de la clase DOMINANTE (anteproyecto: clasificación categórica)
 # ---------------------------------------------------------------------------
 # La metodología aprobada (Fase 1, Etiquetado Asistido) exige asignar "la
@@ -395,10 +559,26 @@ Criterios de desempate (en orden):
 1. ¿Qué marco organiza el titular y el primer tercio del texto?
 2. ¿Qué retórica usa el texto en su propia voz (no en citas de terceros)?
 3. Si dos marcos empatan genuinamente, elige el que motivaría el titular.
+4. Si el empate persiste e involucra a `institucionalismo`, elige LA OTRA clase.
+   El vocabulario institucional (entidades, trámites, normas) aparece en casi
+   cualquier noticia política colombiana sin constituir un encuadre, así que
+   este eje gana empates por acumulación de indicios débiles. La asimetría
+   corrige ese sesgo de medición; no es una preferencia teórica.
 
-La dominante debe ser una de las 8 clases exactas (en minúsculas):
+La dominante debe ser una de estas clases exactas (en minúsculas):
 personalismo, institucionalismo, populismo, doctrinarismo, soberanismo,
-globalismo, conservadurismo, progresismo."""
+globalismo, conservadurismo, progresismo, sin_encuadre.
+
+`sin_encuadre` es la regla 3 del §2.1 del codebook v1.1: el texto es político
+pero NINGUNA de las ocho dimensiones lo estructura. No es una abstención ni un
+voto nulo — es una afirmación sobre el texto, y se cuenta para el consenso.
+Es la etiqueta que corresponde al boletín regulatorio, al comunicado de gestión
+y al parte operativo sin valoración propia. Forzar una de las ocho sobre un
+texto sin encuadre mete ruido de etiqueta en la clase que más se le parezca por
+vocabulario, y el modelo aprende esa confusión como si fuera señal.
+
+Los artículos marcados `sin_encuadre` se EXCLUYEN del entrenamiento; no son una
+novena clase del clasificador, que sigue siendo un softmax de dimensión 8."""
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +608,12 @@ def build_system_prompt(
             if not marker.startswith("[TBD"):
                 axes_section += f"- {marker}\n"
 
+        # Los no-marcadores solo existen donde se midió confusión sistemática.
+        if axis.get("non_markers"):
+            axes_section += "\n**NO son marcadores (por sí solos no suben el score):**\n"
+            for marker in axis["non_markers"]:
+                axes_section += f"- {marker}\n"
+
         # Referencias semánticas en [0, 1]. Los niveles 1-5 del codebook
         # se muestran como aproximaciones: el LLM puede dar cualquier
         # valor continuo, no solo los anclajes.
@@ -451,7 +637,16 @@ def build_system_prompt(
     dominant_field = ""
     dominant_task = ""
     if with_dominant:
-        dominant_section = f"\n## CLASE DOMINANTE (etiqueta categórica)\n\n{DOMINANT_RULES}\n"
+        # UMBRAL_RULES se probó en un experimento controlado (150 artículos,
+        # mismos tres jueces, a ciegas): ΔΑ = -0.022. Empeora el acuerdo, así
+        # que NO se incluye. Se conserva la constante como registro de lo que
+        # se intentó y por qué no funcionó.
+        dominant_section = (
+            f"\n## LA ENTONACIÓN (léelo antes de responder `sin_encuadre`)\n\n{TONO_RULES}\n"
+            f"\n## LA SUSTANCIA (qué da por bueno el texto)\n\n{SUSTANCIA_RULES}\n"
+            f"\n## LO MACROECONÓMICO\n\n{MACRO_RULES}\n"
+            f"\n## CLASE DOMINANTE (etiqueta categórica)\n\n{DOMINANT_RULES}\n"
+        )
         dominant_field = ',\n    "dominant": "personalismo"'
         dominant_task = (
             " y elegir la clase ideológica DOMINANTE del artículo (una sola, "

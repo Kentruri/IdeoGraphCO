@@ -30,6 +30,10 @@ for _noisy in ("google_genai", "google_genai.types", "httpx", "httpcore"):
 # `label`/`label_idx` (los que consume el Dataset) + los 8 scores.
 AXIS_NAMES: list[str] = IDEOLOGY_CLASSES
 DOMINANT_KEY = "dominant"
+# Etiqueta del codebook v1.1 §2.1 regla 3: el texto es político pero ninguna
+# de las ocho dimensiones lo estructura. No es una de las ocho clases, así que
+# no tiene índice en CLASS_TO_IDX y se excluye del entrenamiento.
+NO_FRAME = "sin_encuadre"
 
 # Cursor SIDECAR por archivo de salida (<output>.cursor): un cursor global
 # único corrompía el estado al etiquetar cualquier otro archivo con --input/
@@ -113,11 +117,12 @@ def parse_response(response_text: str) -> dict | None:
         # Acotar a [0.0, 1.0] como float.
         data[axis] = max(0.0, min(1.0, float(data[axis])))
 
-    # Clase dominante: obligatoria y dentro de las 8 clases. Una respuesta
-    # sin dominante válida se descarta completa (mejor reintentar que
-    # inventar la etiqueta con argmax).
+    # Clase dominante: obligatoria. Admite las ocho clases y `sin_encuadre`,
+    # que es la regla 3 del §2.1 del codebook v1.1 (texto político que ninguna
+    # de las ocho estructura). Una respuesta sin dominante válida se descarta
+    # completa (mejor reintentar que inventar la etiqueta con argmax).
     dominant = data.get(DOMINANT_KEY)
-    if dominant not in CLASS_TO_IDX:
+    if dominant not in CLASS_TO_IDX and dominant != NO_FRAME:
         logger.warning("Respuesta sin clase dominante válida: %r", dominant)
         return None
 
@@ -135,7 +140,7 @@ def normalize_labels(data: dict) -> dict:
 
 
 # Schema JSON estructurado para Gemini: 8 ejes numéricos en [0, 1] + la
-# clase dominante como enum de las 8 clases. Garantiza tipos y rango,
+# clase dominante como enum de las 8 clases más `sin_encuadre`. Garantiza
 # eliminando la mayoría de la validación defensiva.
 _LABEL_RESPONSE_SCHEMA = {
     "type": "object",
@@ -144,7 +149,7 @@ _LABEL_RESPONSE_SCHEMA = {
             axis: {"type": "number", "minimum": 0.0, "maximum": 1.0}
             for axis in AXIS_NAMES
         },
-        DOMINANT_KEY: {"type": "string", "enum": list(AXIS_NAMES)},
+        DOMINANT_KEY: {"type": "string", "enum": [*AXIS_NAMES, NO_FRAME]},
     },
     "required": [*AXIS_NAMES, DOMINANT_KEY],
 }

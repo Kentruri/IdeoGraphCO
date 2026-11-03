@@ -114,6 +114,146 @@ titular + cuerpo → K chunks de 512 tokens (sliding_window, stride=384, max K=1
   `xlnet-base-cased` (XLNet original en inglés; decisión ago-2026 de mantener
   el modelo comprometido en el anteproyecto — su bajo desempeño esperado en
   español es hallazgo del benchmark, no un error).
+- **Encoder adicional de contexto largo** (decisión del autor, 2-nov-2026;
+  FUERA del anteproyecto, consultar al director): `BSC-LT/MrBERT-es`
+  (ModernBERT español del BSC, 150M, ventana de 8.192 tokens). Lee el
+  artículo seguido, sin trocear ni promediar, y mide si la dilución del
+  mean-pool —limitación declarada— cuesta acierto. En el Mac corre con un
+  solo chunk de 4.096 tokens (8.192 no cabe en memoria; ver hallazgos abajo),
+  que lee completo el 96,1 % del corpus. Va en `EXTRA_MODELS` del registry
+  (no corre por defecto; `--models mrbert-es`, con `data.chunk_size=4096` y
+  `data.max_chunks=1`, ver `logs/cadena_largo.sh`), mismo split y
+  presupuesto que los demás.
+  Regla fijada antes de ver resultados: si supera a BETO troceado por más de
+  ~1,5–2 puntos de macro-F1 en validación, entra al benchmark oficial como
+  quinto modelo; si no, se documenta en la tesis como alternativa intentada.
+  Los 4 del anteproyecto se corren igual en ambos casos.
+- **Cribado (1/2-nov, 1 semilla, train de 5.000, máx. 4 épocas, val por
+  medio)**: BETO 0,752 · MrBERT-es (4.096) 0,750 · ConfliBERT 0,741 ·
+  TF-IDF 0,733 · XLM-R 0,717 · BETO truncado a 512 0,716 (el troceo queda
+  validado, P2.3) · XLNet 0,661 (el peor en las 8 clases). Finalistas: BETO
+  y ConfliBERT. MrBERT-es NO cumple la regla (−0,2 puntos): no entra al
+  benchmark oficial y se documenta como alternativa evaluada. IC 95 %
+  bootstrap ≈ ±2 puntos: el orden entre los primeros no es concluyente con
+  una semilla. Es selección preliminar, no el resultado de la tesis.
+
+### Fundamento de los hiperparámetros
+
+Receta estándar de fine-tuning de BERT, la MISMA para todos los encoders y
+sin búsqueda por modelo (decisión de equidad y de cómputo; Devlin et al.
+recomiendan buscar en sus rangos sobre dev, aquí no se hizo: citarlo como
+limitación, puede desfavorecer a XLNet o XLM-R). Configs en
+`configs/model/*.yaml`, `configs/data/default.yaml`, `configs/trainer/`.
+
+| Parámetro | Valor | Fundamento |
+|-----------|-------|------------|
+| Tasa de aprendizaje | 2e-5 | Devlin et al. 2019, §A.3: rango {5e-5, 3e-5, 2e-5}; Sun et al. 2019 usan 2e-5; Mosbach et al. 2021: tasas pequeñas estabilizan |
+| Lote efectivo | 16 | Devlin et al. 2019, §A.3: {16, 32}; se llega por acumulación de gradiente |
+| Optimizador | AdamW, weight decay 0,01 | Loshchilov y Hutter 2019 (AdamW); 0,01 es el decay del preentrenamiento de BERT (Devlin et al. 2019, §A.2) |
+| Calentamiento | 10 % lineal + decaimiento lineal | Programa de Devlin et al. 2019; proporción 0,1 de Sun et al. 2019 |
+| Dropout de la cabeza | 0,1 | Devlin et al. 2019, §A.3; Sun et al. 2019 |
+| Épocas / parada temprana | máx. 10, paciencia 3 | Decisión propia: Devlin sugiere 2–4 para corpus grandes; Mosbach et al. 2021 muestran que entrenar más iteraciones mejora la estabilidad; Dodge et al. 2020, parada temprana |
+| Semillas | 3 (42, 43, 44) | Dodge et al. 2020: la semilla (inicialización de la cabeza y orden de datos) mueve el resultado; Reimers y Gurevych 2017: reportar distribuciones. Los valores son convención, fijados antes de ver resultados |
+| Ventana | 512 tokens | Límite de posiciones de BERT (Devlin et al. 2019) |
+| Desplazamiento / máx. ventanas | 384 / 16 | Decisión propia sobre la distribución de longitudes del corpus (silver train+val, 13.574 art., tokenizer de BETO: mediana 828, p95 3.039, p99 6.122; 79,6 % pasa de 512; de 8 a 16 ventanas, truncados 4,5 % → 0,9 % y tokens perdidos 9,7 % → 4,0 %, por +6,7 % de ventanas); troceo con solape + agregación: Pappagari et al. 2019, Dai et al. 2022 |
+| Agregación | media de [CLS] con máscara | Anteproyecto §5.3 (V_doc) |
+| Pesos de clase | raíz de la frecuencia inversa | Cui et al. 2019 (CVPR) la describen como la versión suavizada habitual de la frecuencia inversa |
+| Gradient checkpointing | solo por memoria | Chen et al. 2016; no cambia el resultado (verificado: diferencia 0) |
+| Precisión | FP32 en MPS; mixta en CUDA | Micikevicius et al. 2018 (mixta) |
+| Validación agrupada por medio | 73 medios no vistos | Baly et al. 2020 |
+
+**Sobre los valores de las semillas.** No significan nada: una semilla solo
+fija el punto de partida del generador pseudoaleatorio, y misma semilla da
+misma secuencia (misma cabeza inicial, mismo barajado, mismas máscaras de
+dropout). No cambia el encoder preentrenado ni la partición (fija por ID en
+`splits.json`). 42 es una convención de la comunidad, homenaje a Adams
+(1979), donde 42 es la "respuesta a la pregunta fundamental de la vida, el
+universo y todo lo demás"; 43 y 44 son los siguientes. No hay un estudio
+revisado por pares que mida esa convención: citar a Adams solo como origen
+del número, y a Dodge et al. (2020) para por qué se usan varias. Las tres se
+fijaron antes de ver resultados y son las mismas para todos los modelos;
+elegir la semilla a posteriori sería sesgo.
+
+Referencias (todas verificadas, nov-2026):
+
+- Adams, D. (1979). *The Hitchhiker's Guide to the Galaxy*. Pan Books.
+- Baly, R., Da San Martino, G., Glass, J. y Nakov, P. (2020). We Can Detect
+  Your Bias: Predicting the Political Ideology of News Articles. *EMNLP 2020*.
+- Chen, T., Xu, B., Zhang, C. y Guestrin, C. (2016). Training Deep Nets with
+  Sublinear Memory Cost. arXiv:1604.06174.
+- Cui, Y., Jia, M., Lin, T.-Y., Song, Y. y Belongie, S. (2019).
+  Class-Balanced Loss Based on Effective Number of Samples. *CVPR 2019*.
+  arXiv:1901.05555.
+- Dai, X., Chalkidis, I., Darkner, S. y Elliott, D. (2022). Revisiting
+  Transformer-based Models for Long Document Classification. *Findings of
+  EMNLP 2022*. arXiv:2204.06683.
+- Devlin, J., Chang, M.-W., Lee, K. y Toutanova, K. (2019). BERT:
+  Pre-training of Deep Bidirectional Transformers for Language
+  Understanding. *NAACL 2019*. arXiv:1810.04805.
+- Dodge, J., Ilharco, G., Schwartz, R., Farhadi, A., Hajishirzi, H. y
+  Smith, N. A. (2020). Fine-Tuning Pretrained Language Models: Weight
+  Initializations, Data Orders, and Early Stopping. arXiv:2002.06305.
+- Loshchilov, I. y Hutter, F. (2019). Decoupled Weight Decay
+  Regularization. *ICLR 2019*. arXiv:1711.05101.
+- Micikevicius, P. et al. (2018). Mixed Precision Training. *ICLR 2018*.
+  arXiv:1710.03740.
+- Mosbach, M., Andriushchenko, M. y Klakow, D. (2021). On the Stability of
+  Fine-tuning BERT: Misconceptions, Explanations, and Strong Baselines.
+  *ICLR 2021*. arXiv:2006.04884.
+- Pappagari, R., Żelasko, P., Villalba, J., Carmiel, Y. y Dehak, N.
+  (2019). Hierarchical Transformers for Long Document Classification.
+  *IEEE ASRU 2019*. arXiv:1910.10781.
+- Reimers, N. y Gurevych, I. (2017). Reporting Score Distributions Makes a
+  Difference: Performance Study of LSTM-networks for Sequence Tagging.
+  *EMNLP 2017*.
+- Sun, C., Qiu, X., Xu, Y. y Huang, X. (2019). How to Fine-Tune BERT for
+  Text Classification? *CCL 2019*, LNCS 11856. arXiv:1905.05583.
+
+### Hallazgos durante el entrenamiento (nov-2026, Mac M4 Pro de 24 GB)
+
+Incidencias reales del benchmark, citables en la tesis como limitaciones de
+cómputo y decisiones de ingeniería:
+
+- **XLNet necesitó gradient checkpointing propio.** La implementación de HF
+  no lo admite (`supports_gradient_checkpointing=False`) y sin él, con el
+  batch mínimo (1 × 16), pedía ~26 GB en un equipo de 24: macOS lo mandó a
+  swap (21,7 de 22,5 GB) y se arrastró a ~0,75 pasos/min (BETO: ~6,7); se
+  detuvo el 2-nov en la época 1 (0,593). Se añadió checkpointing capa a capa
+  (`ideoclassifier._checkpoint_layers`, `use_reentrant=False`; diferencia 0
+  en pérdida y gradientes). Con él cabe a 1 × 16 (swap estable ~6 GB), entrena
+  a ~3,4 pasos/min y completó el cribado en 371 min, el doble que BETO:
+  **val macro-F1 0,661** (0,579 → 0,633 → 0,653 → 0,661 por época).
+  IC 95 % bootstrap 0,637–0,683: por debajo de todos, incluido TF-IDF.
+  La primera época quedó 1,4 puntos bajo la del intento detenido (0,593)
+  con la misma semilla: MPS no es determinista entre corridas.
+  Docker Desktop (VM de 8 GB, 6 contenedores) también ocupaba memoria; el
+  autor lo cerró el 2-nov (memoria libre del sistema 19 % → 37 %).
+- **Por qué XLNet rinde menos: su tokenizador inglés.** `xlnet-base-cased`
+  (`keep_accents=False`) en val da 2,39 tokens por palabra (BETO: 1,27) y
+  borra las tildes («está» = «esta», «publicó» = «publico»). La mediana de
+  un artículo pasa de 814 a 1.540 tokens y el 3,5 % se trunca pasado el
+  token 6.270 (BETO: 0,8 %; en todo `dataset.jsonl`: 4,1 % vs 0,9 %).
+  Es la explicación que usa la tesis (§8.4); la receta común de
+  hiperparámetros también podría desfavorecerlo (§11).
+- **Memoria de la GPU (MPS).** Con el dropout activo, un batch de 8 artículos
+  largos no cabe: BETO/ConfliBERT/XLM-R entrenan con gradient checkpointing
+  (mismo resultado, ~30 % más lento); XLM-R además con batch 1 × 16 por su
+  vocabulario de 250k. El batch efectivo es 16 en todos. Para no caer en swap
+  se topa la GPU en 16 GiB (`PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.0`, con
+  `LOW_WATERMARK_RATIO=0.8`) y se usa un solo proceso de carga de datos.
+- **MrBERT-es a un solo chunk de 4.096 tokens, no 8.192.** Con el tope de
+  16 GiB, 8.192 tokens no cabe, ni 2 chunks de 4.096 con el optimizador
+  (Adam ≈ 2 GB). Un chunk de 4.096 lee completo el 96,1 % de los artículos;
+  el 3,9 % más largo se trunca a ~3.000 palabras (8× lo de BETO truncado).
+  Con largos variables, el allocator de MPS acumulaba bloques: el modelo
+  redondea el ancho a múltiplos de 256 y vacía la caché cada 50 batches.
+  Su tokenizador no declara cls/sep: el dataset usa `<s>` / `</s>`.
+- **Errores de código que se corrigieron antes del cribado**: el dropout
+  interno del encoder quedaba apagado (transformers 5 devuelve el modelo en
+  eval y Lightning ≥2.3 ya no llama a `.train()`); los chunks de relleno y el
+  padding hasta `chunk_size` pasaban por el encoder (ahora solo lo real,
+  salida idéntica); `hf-xet` colgaba las descargas de Hugging Face (se baja
+  con `HF_HUB_DISABLE_XET=1` y se entrena con `HF_HUB_OFFLINE=1`).
 - **Cabeza binaria de politicidad**: deshabilitada por defecto. Ver TBD en el
   docstring de `src/training/models/ideoclassifier.py` y
   `docs/preguntas-director.md` tema 1.
@@ -189,7 +329,7 @@ checkpoint entrenado → IdeoGraphCO-BE (inferencia y prototipo, OE4)
 src/
 ├── core/                  # ids, paths, IDEOLOGY_CLASSES (fuente única)
 ├── scraper/
-│   ├── sources.py         # 434 fuentes colombianas en 7 categorías
+│   ├── sources.py         # 435 fuentes colombianas en 7 categorías
 │   ├── parser.py          # trafilatura + UA rotativo
 │   ├── cleaner.py         # regex (cookies, CTAs, URLs, handles)
 │   ├── article_filter.py  # LLM filter con escalado automático
@@ -214,7 +354,7 @@ docs/                      # guías técnicas + preguntas al director
 workflows-guide/           # guía paso a paso por etapa
 ```
 
-## Fuentes (434 en 7 categorías — todas colombianas)
+## Fuentes (435 en 7 categorías — todas colombianas)
 
 `src/scraper/sources.py` — distribución actual (ampliaciones + auditoría de
 colombianidad, ago-2026; los medios extranjeros que "cubrían Colombia" se
@@ -222,7 +362,7 @@ dieron de baja tras medir que su contenido era mayormente de otros países):
 
 | Categoría | # |
 |-----------|---|
-| Institucional | 139 |
+| Institucional | 140 |
 | Regional | 99 |
 | Gremial | 61 |
 | Opinion (think tanks) | 53 |

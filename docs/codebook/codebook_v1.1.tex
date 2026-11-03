@@ -1,0 +1,1169 @@
+% Codebook IdeoGraphCO v1.1 — fuente LaTeX (xelatex)
+% Compilar:  xelatex codebook_v1.1.tex   (dos veces, por el índice)
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage{geometry}
+\geometry{margin=2.4cm,top=2.6cm,bottom=2.4cm}
+\usepackage{fontspec}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{framed}
+\usepackage[spanish,es-noquoting,es-nolists,es-tabla]{babel}
+\usepackage[hidelinks]{hyperref}
+
+\setmainfont{Georgia}
+\newfontfamily\headfont{Helvetica Neue}
+
+\definecolor{tinte}{HTML}{F2F4F7}
+\definecolor{pend}{HTML}{FFF4E0}
+\definecolor{ratif}{HTML}{E9F2EC}
+\definecolor{nuevo}{HTML}{E8EEF8}
+\definecolor{gris}{HTML}{6B7280}
+\definecolor{azul}{HTML}{1F3864}
+
+% ---- encabezado y pie sin fancyhdr ----
+\makeatletter
+\def\ps@cb{%
+  \def\@oddhead{\footnotesize\color{gris}\hfill Codebook — Orientación Ideológica en Noticias Políticas Colombianas}%
+  \let\@evenhead\@oddhead
+  \def\@oddfoot{\hfil\footnotesize\color{gris}\thepage\hfil}%
+  \let\@evenfoot\@oddfoot}
+\makeatother
+\pagestyle{cb}
+
+\renewcommand{\familydefault}{\rmdefault}
+
+% ---- cajas de aviso ----
+\newcommand{\caja}[3]{%
+  \par\smallskip\colorlet{shadecolor}{#1}%
+  \begin{shaded}\noindent{\headfont\bfseries #2}\par\smallskip\small #3\par\end{shaded}\smallskip}
+
+% ---- metadatos repetidos al pie de cada ficha ----
+\newcommand{\metaficha}[1]{%
+  \par\smallskip\noindent\footnotesize\color{gris}%
+  \textbf{Correspondencia V-Party:} #1\\
+  \textbf{Tipo de variable:} H (Gold Set) y LLM (Silver Set) — ver §1.4.1\\
+  \textbf{Unidad de codificación:} Artículo periodístico completo (ver §1.6)\\
+  \textbf{Agregación entre codificadores:} Consenso (Gold Set) / Alfa de Krippendorff (Silver Set, auditoría)\\
+  \textbf{Versión del codebook:} 1.1\par\normalsize\color{black}\medskip}
+
+% ---- ejemplos ----
+\newcommand{\ejemplo}[2]{%
+  \par\smallskip\noindent\textbf{Ejemplo — #1:}\par\nopagebreak
+  \begingroup\itshape\small\leftskip=1.2em\rightskip=0.5em\noindent #2\par\endgroup\smallskip}
+
+\newcommand{\dimtitulo}[2]{\subsubsection*{#1 \normalfont\small\color{gris}(H,\,LLM)\ \ \texttt{#2}}%
+  \addcontentsline{toc}{subsubsection}{#1}}
+
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+% ============================ PORTADA ============================
+\thispagestyle{empty}
+\begin{center}
+\vspace*{1.2cm}
+{\headfont\large UNIVERSIDAD DEL VALLE}\\[0.25em]
+{\headfont\small Facultad de Ingeniería — Escuela de Ingeniería de Sistemas y Computación}\\[2.6cm]
+
+{\headfont\fontsize{34}{38}\selectfont\color{azul}\bfseries CODEBOOK}\\[0.9em]
+{\headfont\large Manual de Reglas de Anotación de Orientación Ideológica}\\[0.3em]
+{\headfont\large para Noticias Políticas Colombianas}\\[1.8cm]
+
+{\headfont\large\bfseries v1.1 — Octubre 2026}\\[0.5em]
+{\small\color{gris}Revisión de calibración de la dimensión Institucionalismo\\y ratificación de las reglas de agregación}\\[1.6cm]
+
+{\footnotesize\color{gris}\begin{minipage}{0.86\textwidth}\centering
+Estructura y convenciones adaptadas del \emph{Codebook Varieties of Party Identity and Organization}
+(V-Party) V2, V-Dem Institute, University of Gothenburg (Lindberg et al., 2022)
+\end{minipage}}\\[2.2cm]
+\end{center}
+
+\noindent Desarrollado para el proyecto de grado:\\
+\emph{“Desarrollo de clasificador multiclase para la identificación de orientación ideológica en noticias
+políticas colombianas”}
+
+\vspace{0.8em}
+\noindent Kevin Steven Trujillo Riascos — Juan Esteban Camargo Chacón\\
+Director: Raúl Ernesto Gutiérrez de Piñerez Reyes, Ph.D.
+
+\newpage
+
+% ============================ CITA Y VERSIONES ============================
+\section*{Cita sugerida}
+Trujillo Riascos, K. S., \& Camargo Chacón, J. E. (2026). \emph{Codebook: Manual de reglas de anotación de
+orientación ideológica para noticias políticas colombianas} (v1.1) [Manual de codificación]. Escuela de
+Ingeniería de Sistemas y Computación, Universidad del Valle.
+
+Estructura documental basada en: Lindberg, S. I. et al. (2022). “Codebook Varieties of Party Identity and
+Organization (V-Party) V2”. Varieties of Democracy (V-Dem) Project, University of Gothenburg.
+\url{https://doi.org/10.23696/vpartydsv2}
+
+\section*{Tabla de control de versiones}
+\begin{longtable}{@{}p{1.4cm}p{1.9cm}p{9.4cm}p{2.5cm}@{}}
+\toprule
+\textbf{Versión} & \textbf{Fecha} & \textbf{Cambios} & \textbf{Autor(es)}\\
+\midrule\endhead
+1.0 & Ago. 2026 & Primera versión: 8 dimensiones ideológicas transcritas desde la matriz de definición de
+ejes; estructura documental alineada al formato V-Party. & Trujillo / Camargo\\
+\addlinespace
+1.1 & Oct. 2026 &
+\textbf{Calibración tras la primera ronda de anotación (n = 207).}
+(a) Dimensión Institucionalismo: se retira el marcador «formalidad burocrática y neutralidad», se
+reescriben los marcadores para exigir función argumentativa, se añade una lista de \emph{no-marcadores} y
+se redefinen los niveles 2 y 3 de la escala; se añade un ejemplo de Nivel 2.
+(b) §2.1: se ratifican las reglas de agregación, empate y umbral mínimo, con criterio de desempate
+determinístico asimétrico.
+(c) §2.2 (nueva): procedimiento abreviado de anotación.
+(d) §1.5: nueva instrucción general «el tema no es el encuadre» y prueba de sustracción.
+(e) §1.6 y §1.5: se ratifican la unidad de codificación y el tratamiento de citas textuales.
+(f) Apéndice D (nuevo): registro razonado de los cambios y evidencia que los motiva.
+(g) Corrección de referencias cruzadas a §1.5.1 (inexistente) por §1.4.1.
+& Trujillo / Camargo\\
+\bottomrule
+\end{longtable}
+
+\caja{nuevo}{Cómo leer esta versión}{%
+Todos los cambios respecto de v1.0 están justificados con evidencia en el \textbf{Apéndice D}. Las
+decisiones que en v1.0 aparecían marcadas como «pendientes de ratificación por el equipo» quedan resueltas
+en v1.1 y señaladas con el rótulo \textbf{Ratificada (v1.1)}. Ninguna de ellas modifica el Anteproyecto: la
+arquitectura comprometida sigue siendo una única distribución \emph{softmax} sobre las ocho clases.}
+
+\newpage
+\tableofcontents
+\newpage
+
+% ============================ 1. NOTAS EXPLICATORIAS ============================
+\section{Notas Explicatorias}
+
+\subsection{Propósito de este Codebook}
+Este codebook operacionaliza la identificación de la orientación ideológica dominante en noticias políticas
+colombianas, en el marco del proyecto de grado “Desarrollo de clasificador multiclase para la identificación
+de orientación ideológica en noticias políticas colombianas”. Define ocho (8) dimensiones ideológicas
+medibles de forma independiente, cada una en una escala ordinal de 1 (Ausente) a 5 (Dominante), y
+establece las reglas para derivar de ellas una única clase ideológica predominante por texto.
+
+El codebook cumple dos funciones simultáneas en el pipeline del proyecto: (1) es el instrumento que usan
+los dos investigadores para anotar manualmente el Gold Set (conjunto de calibración humana), y (2) es el
+conjunto de reglas operacionales que se entrega como instrucción a un modelo de lenguaje de gran escala
+(LLM) para generar el Silver Set (etiquetado masivo asistido), cuya consistencia se audita contra el consenso
+humano mediante el Alfa de Krippendorff ($\alpha \geq 0.8$).
+
+\caja{ratif}{Consecuencia operativa de la doble función}{%
+Las dos funciones comparten un solo texto: cualquier cambio en este documento debe propagarse
+simultáneamente al instrumento de anotación humana y a las instrucciones del juez LLM. Si solo se corrige
+uno de los dos, el Silver Set deja de ser comparable con el Gold Set y la auditoría de concordancia pierde su
+sentido, porque mediría la diferencia entre dos codebooks y no la fidelidad del etiquetado asistido.}
+
+\subsection{Marco Teórico: Cuatro Ejes, Ocho Dimensiones}
+Siguiendo la Teoría del Encuadre (\emph{framing}) de Entman, se asume que los medios no solo determinan qué
+temas cubrir sino cómo enmarcarlos. Para operacionalizar este encuadre, la taxonomía se organiza en cuatro
+ejes teóricos bipolares, cada uno compuesto por dos dimensiones que se codifican de forma independiente
+(no mutuamente excluyente). La taxonomía se alinea conceptualmente con las variables e índices del V-Party
+Dataset (V-Dem), adaptados a la agenda política colombiana.
+
+\begin{longtable}{@{}p{0.6cm}p{4.1cm}p{3.6cm}p{6.6cm}@{}}
+\toprule
+\textbf{\#} & \textbf{Eje teórico} & \textbf{Dimensiones} & \textbf{Correspondencia V-Party}\\
+\midrule\endhead
+1 & Progresismo vs. Conservadurismo & Progresismo vs. Conservadurismo & Derechos civiles, diversidad de
+género y secularismo (V-Party)\\
+\addlinespace
+2 & Populismo vs. Institucionalismo & Populismo vs. Institucionalismo & Retórica populista (anti-elitismo y
+centralidad de la voluntad popular) frente al compromiso con el pluralismo (V-Party)\\
+\addlinespace
+3 & Soberanismo vs. Globalismo & Soberanismo vs. Globalismo & Nacionalismo económico frente a
+internacionalismo y multilateralismo (marco teórico propio; sin variable V-Party directa)\\
+\addlinespace
+4 & Personalismo vs. Doctrinarismo & Personalismo vs. Doctrinarismo & Personalismo de partido (V-Party);
+Doctrinarismo es contraparte definida por el proyecto\\
+\bottomrule
+\end{longtable}
+
+\subsection{Notas de Precaución}
+
+\caja{ratif}{Estado de las decisiones pendientes de v1.0 — Ratificadas (v1.1)}{%
+La versión 1.0 identificó cuatro decisiones metodológicas sin resolver que debían fijarse por consenso de los
+dos investigadores antes de iniciar la anotación del Gold Set: (1) la unidad exacta de codificación, (2) la
+regla de derivación de la clase predominante, (3) el umbral de «sin encuadre dominante», y (4) el
+tratamiento de citas textuales de terceros dentro de la noticia.\par\smallskip
+\textbf{Las cuatro quedan resueltas en esta versión}, tras la primera ronda de anotación: (1) en §1.6,
+(2) y (3) en §2.1, y (4) en §1.5. El Apéndice D documenta la evidencia que motivó cada decisión. La única
+cuestión que permanece abierta —y que requeriría aprobación del director por modificar el Anteproyecto— es
+si la categoría «Sin encuadre ideológico dominante» debe convertirse en una novena clase del clasificador;
+v1.1 la trata como criterio de exclusión y \emph{no} como clase (§2.1, regla 3).}
+
+Como en V-Party, se advierte que la orientación ideológica es un constructo intersubjetivo: el Gold Set no
+captura una “verdad absoluta”, sino el consenso estructurado de los codificadores bajo las reglas de este
+manual (Anteproyecto, sección 4.2). Por ello, toda ambigüedad debe documentarse en el campo de
+comentarios (Apéndice C) en lugar de resolverse de forma silenciosa e inconsistente entre anotadores.
+
+\subsection{Información de las Variables}
+
+\subsubsection{Tipos de Variable}
+Este codebook define dos tipos de variable, análogos a los tipos A/C de V-Dem:
+\begin{itemize}
+\item \textbf{Tipo H} (\emph{Human} — Gold Set): codificada de forma independiente por los dos
+investigadores siguiendo estrictamente este manual. Las discrepancias se resuelven por consenso.
+Constituye el estándar de verdad (\emph{Ground Truth}).
+\item \textbf{Tipo LLM} (Silver Set): codificada por un modelo de lenguaje de gran escala instruido con este
+mismo codebook. Sujeta a auditoría y curaduría manual sobre muestras aleatorias, validada contra el
+consenso humano mediante Alfa de Krippendorff.
+\item \textbf{Tipo D} (Índice derivado): variable calculada a partir de las 8 dimensiones anteriores mediante
+una regla de agregación explícita (no observada directamente). Corresponde a la Clase Ideológica
+Predominante (§2).
+\end{itemize}
+
+\subsubsection{Número de Variables}
+\begin{longtable}{@{}p{7.2cm}p{3.2cm}p{3.0cm}@{}}
+\toprule
+\textbf{Sección} & \textbf{Tipo} & \textbf{\# Variables}\\
+\midrule\endhead
+Índice derivado (clase predominante) & D & 1\\
+Eje 1 — Sociocultural & H, LLM & 2\\
+Eje 2 — Gobernanza & H, LLM & 2\\
+Eje 3 — Política exterior & H, LLM & 2\\
+Eje 4 — Estructura de liderazgo & H, LLM & 2\\
+\midrule
+\textbf{Total} & & \textbf{9}\\
+\bottomrule
+\end{longtable}
+
+\subsubsection{Convención de Nombres (Tags)}
+Cada variable recibe un identificador corto, análogo a los tags \texttt{v2pa…} de V-Party, con la estructura:
+prefijo \texttt{id\_} + abreviatura de 3–4 letras de la dimensión.
+
+\begin{longtable}{@{}p{2.2cm}p{5.0cm}p{2.2cm}p{5.0cm}@{}}
+\toprule
+\textbf{Tag} & \textbf{Dimensión} & \textbf{Tag} & \textbf{Dimensión}\\
+\midrule\endhead
+\texttt{id\_prog} & Progresismo      & \texttt{id\_cons} & Conservadurismo\\
+\texttt{id\_popu} & Populismo        & \texttt{id\_inst} & Institucionalismo\\
+\texttt{id\_sob}  & Soberanismo      & \texttt{id\_glob} & Globalismo\\
+\texttt{id\_pers} & Personalismo     & \texttt{id\_doct} & Doctrinarismo\\
+\bottomrule
+\end{longtable}
+Variable derivada: \texttt{id\_pred} (Clase Ideológica Predominante).
+
+\subsubsection{Campos de cada Ficha de Variable}
+Cada una de las 8 dimensiones (§3) se documenta con la siguiente información, cuando aplica:
+\begin{itemize}
+\item \textbf{Eje teórico}: eje bipolar al que pertenece la dimensión.
+\item \textbf{Pregunta}: definición operacional que responde la escala (equivalente al campo \emph{Question}
+de V-Party).
+\item \textbf{Marcadores léxicos y discursivos}: indicadores textuales, léxicos y retóricos que evidencian la
+presencia de la dimensión (equivalente a \emph{Clarification}).
+\item \textbf{No son marcadores}: rasgos que podrían confundirse con la dimensión pero que, por sí solos, no
+la activan. Se documentan para las dimensiones donde la primera ronda de anotación reveló confusión
+sistemática (ver Apéndice D).
+\item \textbf{Escala}: niveles ordinales 1 a 5, cada uno con su descripción operacional (equivalente a
+\emph{Responses}).
+\item \textbf{Ejemplos}: casos ilustrativos tomados de la matriz de definición del proyecto y del corpus.
+\item \textbf{Correspondencia V-Party}: variable o índice del V-Party Dataset del que se deriva
+conceptualmente la dimensión (equivalente a \emph{Source}).
+\item Tipo de variable, unidad de codificación, agregación entre codificadores y versión del codebook.
+\end{itemize}
+
+\subsection{Instrucciones Generales a los Codificadores}
+\emph{(Adaptado del formato “Instructions to the coders” de V-Party, sección 3 del codebook original)}
+\begin{itemize}
+\item Lea el artículo completo antes de asignar cualquier puntaje. No codifique a partir del titular o del
+primer párrafo únicamente.
+\item Las ocho dimensiones se puntúan de forma independiente en una escala de 1 a 5. No son mutuamente
+excluyentes: un mismo texto puede (y frecuentemente lo hará) obtener puntajes intermedios en varias
+dimensiones simultáneamente.
+\item El puntaje refleja \textbf{qué tanto estructura el argumento del texto} esa dimensión, no si el tema
+aparece de forma incidental. Una sola mención aislada de un actor internacional no basta para un puntaje
+alto en Globalismo; debe ser parte del argumento central.
+\item Codifique el encuadre del medio, no la veracidad de los hechos relatados. Una noticia puede ser
+factualmente correcta y aun así estar fuertemente enmarcada en una dimensión ideológica.
+\item Registre cualquier caso ambiguo, límite o de difícil decisión en el campo de comentarios (Apéndice C),
+incluyendo una breve justificación del puntaje asignado. Esto es insumo directo para iterar el codebook si el
+Alfa de Krippendorff no alcanza el umbral de 0.8.
+\end{itemize}
+
+\caja{nuevo}{Nuevo en v1.1 — El tema no es el encuadre}{%
+\textbf{El asunto del que trata una noticia no determina ninguno de los ocho puntajes.} Una nota sobre
+pensiones puede puntuar alto en Conservadurismo, en Progresismo o en Institucionalismo según cómo la
+enmarque; que hable de pensiones no aporta evidencia para ninguna de las tres.\par\smallskip
+\textbf{Prueba de sustracción.} Antes de asignar un puntaje de 3 o más, pregúntese: \emph{si retiro del texto
+la dimensión que estoy evaluando, ¿se cae el argumento o solo cambia el protagonista?} Si el argumento
+sigue en pie, la dimensión está presente pero no es dominante, y el puntaje no debe pasar de 2.\par\smallskip
+Esta regla importa especialmente en \textbf{Institucionalismo} (§3.2), donde el vocabulario de la
+administración pública —entidades, resoluciones, trámites— aparece en casi cualquier noticia política
+colombiana sin que ello constituya un encuadre ideológico. La primera ronda de anotación mostró que esta
+confusión, no corregida, absorbe la mayoría del corpus (Apéndice D).}
+
+\caja{ratif}{Ratificada (v1.1) — Tratamiento de citas textuales de terceros}{%
+Las citas textuales de actores entrevistados dentro de la noticia \textbf{sí cuentan} para la codificación, en
+tanto reflejan una decisión editorial de selección y espacio por parte del medio. Si el mismo artículo presenta
+un contrapeso explícito (declaración de otro actor, desmentido, contexto que matiza la cita), el puntaje de
+dominancia de esa dimensión \textbf{debe moderarse} en al menos un nivel.\par\smallskip
+\emph{Justificación:} el objeto de medición declarado en el Anteproyecto es el encuadre del medio, y la
+selección de a quién se cita y cuánto espacio se le concede es precisamente una operación de encuadre. La
+regla de moderación evita el efecto contrario: que un medio que contrasta dos posturas quede codificado con
+el puntaje de la más estridente de las dos.}
+
+\subsection{Unidad de Codificación}
+
+\caja{ratif}{Ratificada (v1.1) — Artículo periodístico completo}{%
+La unidad de codificación es el \textbf{artículo periodístico completo} (titular + cuerpo), tal como lo extrae el
+scraper, previo a cualquier segmentación (\emph{chunking}) usada en la Fase 2 de entrenamiento
+(Anteproyecto, sección 6, Fase 2). Es la unidad que corresponde a la decisión editorial completa del
+medio.\par\smallskip
+\emph{Justificación:} es además la unidad que el pipeline ya implementa de extremo a extremo —el juez, la
+construcción del dataset y la inferencia componen la misma entrada canónica (titular + cuerpo)—, de modo
+que mantener la etiqueta a nivel de artículo evita una divergencia entre lo anotado y lo entrenado.\par\smallskip
+La opción (b) de v1.0 —añadir una capa de anotación a nivel de \emph{chunk} para estudiar la dilución de
+señal semántica declarada como limitación en el Anteproyecto (sección 4.2)— \textbf{no se descarta}, pero
+queda explícitamente fuera del alcance de esta iteración: se documenta como trabajo futuro, no como
+pendiente del Gold Set.}
+
+\subsection{Protocolo de Concordancia entre Codificadores}
+Siguiendo el Anteproyecto (sección 5.3, “Construcción del Corpus”), el proceso se estructura en dos fases
+cuantificables mediante el Alfa de Krippendorff ($\alpha$):
+\begin{itemize}
+\item \textbf{Calibración humana (Gold Set)}: los dos investigadores anotan de forma independiente una
+muestra inicial del corpus, estrictamente según este codebook. Se calcula $\alpha$ sobre las 8 dimensiones.
+Si $\alpha \geq 0.8$, las discrepancias se resuelven por consenso y esa muestra pasa a ser el estándar de
+verdad. Si $\alpha < 0.8$, \textbf{el codebook se itera} (se refinan definiciones, marcadores o niveles
+ambiguos) y se repite la ronda de calibración.
+\item \textbf{Etiquetado asistido (Silver Set)}: un LLM codifica el resto del corpus siguiendo este mismo
+codebook. Se audita mediante muestras aleatorias, calculando $\alpha$ entre las etiquetas del LLM y el
+consenso de los investigadores en esas muestras, para garantizar que el Silver Set no sufra degradación
+conceptual respecto al Gold Set.
+\end{itemize}
+
+\caja{nuevo}{Nota de procedencia de v1.1}{%
+Esta versión es, formalmente, una \textbf{iteración del codebook} en el sentido del protocolo anterior: la
+primera ronda de anotación reveló un nivel ambiguo —el Nivel 3 de Institucionalismo— que concentraba el
+81,6\,\% de las asignaciones. La iteración se ejecutó sobre la evidencia de esa ronda y antes de completar
+el Gold Set, que es el momento previsto para hacerlo. El Apéndice D documenta el diagnóstico.}
+
+\newpage
+% ============================ 2. ÍNDICE DERIVADO ============================
+\section{Índice Derivado}
+
+\subsection{Clase Ideológica Predominante (D) — \texttt{id\_pred}}
+\textbf{Pregunta:} ¿Cuál es la orientación ideológica dominante del texto, considerando las 8 dimensiones
+codificadas?
+
+\textbf{Fuente(s):} \texttt{id\_prog}, \texttt{id\_cons}, \texttt{id\_popu}, \texttt{id\_inst},
+\texttt{id\_sob}, \texttt{id\_glob}, \texttt{id\_pers}, \texttt{id\_doct}
+
+\textbf{Respuestas:} Categórica, una de las 8 dimensiones, o la categoría adicional
+\textbf{“Sin encuadre ideológico dominante”}.
+
+\caja{ratif}{Ratificada (v1.1) — Regla de agregación}{%
+El Excel de definición asigna un puntaje 1–5 independiente a cada una de las 8 dimensiones, pero el
+clasificador final necesita una única etiqueta por texto (\emph{softmax} de 8 clases, Anteproyecto §5.3). La
+regla queda fijada así:\par\medskip
+\textbf{(1) Regla general.} \texttt{id\_pred} = \emph{argmax} de los 8 puntajes (la dimensión con el puntaje
+más alto).\par\medskip
+\textbf{(2) Regla de empate.} Si dos o más dimensiones empatan en el puntaje máximo, el anotador decide
+cuál estructura de forma más central el argumento del texto y registra la justificación en el campo de
+comentarios (Apéndice C). Cuando no sea posible decidir, se aplica el siguiente criterio determinístico de
+respaldo, \textbf{en orden}:\par\smallskip
+\hspace{1em}\textbf{(a)} Si el empate involucra a \textbf{Institucionalismo} y a cualquier otra dimensión,
+gana \textbf{la otra}.\par
+\hspace{1em}\textbf{(b)} Si el empate persiste, gana la dimensión cuyos marcadores aparecen primero en el
+titular y el primer tercio del texto.\par
+\hspace{1em}\textbf{(c)} Si aún persiste, el caso se marca \texttt{empate\_irresoluble} en comentarios y se
+excluye del Gold Set inicial, documentando su frecuencia en el reporte P1.3.\par\medskip
+\emph{Justificación de la asimetría en (a):} Institucionalismo es la única de las ocho dimensiones cuyos
+marcadores superficiales —léxico jurídico, entidades del Estado, descripción de trámites— aparecen en
+prácticamente cualquier noticia política colombiana con independencia de su encuadre. Tiene, por tanto, una
+tasa base de activación espuria estructuralmente más alta que las demás, confirmada empíricamente en la
+primera ronda de anotación (Apéndice D). La asimetría \textbf{corrige un sesgo de medición conocido y
+documentado}; no expresa una preferencia teórica por ninguna corriente ni altera la definición de la
+dimensión.}
+
+\caja{ratif}{Ratificada (v1.1) — Regla de umbral mínimo}{%
+\textbf{(3)} Si el puntaje máximo entre las 8 dimensiones es \textbf{$\leq$ 2} —es decir, ninguna dimensión
+supera el nivel «Leve»— el texto se etiqueta como \textbf{“Sin encuadre ideológico dominante”}.\par\medskip
+\textbf{Tratamiento:} estos textos se \textbf{excluyen} del conjunto de entrenamiento y del conjunto de
+prueba. No constituyen una novena clase. Su proporción sobre el corpus anotado se reporta como
+característica del corpus en el producto P1.3.\par\medskip
+\emph{Justificación:} el Anteproyecto compromete una única distribución \emph{softmax} de dimensión 8.
+Convertir «Sin encuadre» en novena clase modificaría la arquitectura comprometida y requeriría aprobación
+del director; excluir esos textos, en cambio, es un criterio de inclusión de datos y no toca la arquitectura.
+Forzar una de las ocho clases sobre un texto sin encuadre es la alternativa peor: introduce ruido de etiqueta
+en la clase que más se le parezca superficialmente —en la práctica, Institucionalismo— y el modelo aprende
+esa confusión como si fuera señal.\par\medskip
+\emph{Abierto para una versión futura:} reincorporar «Sin encuadre» como novena clase es defendible —haría
+al clasificador utilizable sobre un corpus sin filtrar previamente— pero exige modificar el Anteproyecto y, por
+tanto, el visto bueno del director. Queda registrado aquí como decisión diferida, no descartada.}
+
+\textbf{Tipo de variable:} D (derivada; no se codifica directamente, se calcula a partir de las 8 variables
+H/LLM)\\
+\textbf{Versión del codebook:} 1.1
+
+\subsection{Procedimiento Abreviado de Anotación \normalfont\small\color{gris}(nuevo en v1.1)}
+
+El procedimiento completo descrito en §2.1 exige puntuar las ocho dimensiones y derivar de ellas el
+\emph{argmax}: nueve decisiones por artículo. Sobre un Gold Set de más de mil artículos, ese costo es la
+diferencia entre un conjunto anotado y uno a medio anotar. Se admite por ello un procedimiento abreviado:
+
+\begin{enumerate}
+\item El anotador identifica \textbf{directamente} la dimensión dominante, aplicando el criterio de
+dominancia (§1.5) y la prueba de sustracción.
+\item Asigna el puntaje 1–5 \textbf{únicamente a esa dimensión} (\texttt{id\_pred\_fuerza}).
+\item Si ese puntaje es $\leq$ 2, la etiqueta pasa a ser “Sin encuadre ideológico dominante” (§2.1, regla 3).
+\end{enumerate}
+
+\caja{nuevo}{Equivalencia y límites del procedimiento abreviado}{%
+\textbf{Es equivalente para la regla de umbral.} La regla 3 solo necesita saber si el \emph{máximo} de los
+ocho puntajes supera 2. Si el anotador identificó correctamente la dimensión dominante, su puntaje
+\emph{es} ese máximo, de modo que el umbral se aplica con un puntaje en lugar de ocho.\par\smallskip
+\textbf{Lo que se pierde} es el perfil completo de las ocho dimensiones, que tiene dos usos: es señal
+secundaria para el entrenamiento y es la base sobre la que se calcula el $\alpha$ de Krippendorff
+\emph{por dimensión}.\par\smallskip
+\textbf{Por tanto:} el procedimiento \textbf{completo} (ocho puntajes) es obligatorio en la muestra de
+calibración sobre la que se calcula $\alpha$. El procedimiento \textbf{abreviado} se admite en el resto del
+Gold Set. Cuál de los dos se usó debe quedar registrado por artículo en la columna \texttt{procedimiento} de
+la plantilla (Apéndice B), porque de ello depende qué artículos entran en el cálculo de concordancia.}
+
+\caja{pend}{Advertencia de implementación}{%
+La interfaz de anotación debe capturar \texttt{id\_pred\_fuerza} además de \texttt{id\_pred}. Una interfaz que
+solo ofrezca la clase dominante, sin puntaje, \textbf{hace inaplicable la regla de umbral}: obliga al anotador
+a elegir una de las ocho clases para todo artículo, incluidos los que no tienen encuadre. Esa fue la causa
+inmediata de la distribución documentada en el Apéndice D.}
+
+\newpage
+% ============================ 3. DIMENSIONES ============================
+\section{Dimensiones Ideológicas}
+\emph{Instrucciones a los codificadores} (ver también §1.5): evalúe cada una de las siguientes 8 dimensiones
+de manera independiente sobre el mismo texto, antes de aplicar la regla de clase predominante de §2.
+
+\subsection{Eje Sociocultural: Progresismo vs. Conservadurismo}
+
+\dimtitulo{Progresismo}{id\_prog}
+\textbf{Eje teórico:} Eje Sociocultural: Progresismo vs. Conservadurismo
+
+\textbf{Pregunta:} Grado en que el texto impulsa transformaciones del \emph{statu quo} en favor de mayor
+igualdad, justicia social, derechos de grupos históricamente marginados (mujeres, comunidades étnicas,
+LGBTQ+, víctimas del conflicto, campesinado) o protección ambiental, usando estas causas como marco de
+legitimación política.
+
+\textbf{Marcadores léxicos y discursivos:}
+\begin{itemize}
+\item Derechos de minorías (LGBTQ+, indígenas, afrodescendientes, mujeres)
+\item Justicia climática y medioambiental
+\item Redistribución económica y justicia social
+\item Laicismo y separación iglesia-Estado
+\item Igualdad de género y feminismo
+\item Reforma agraria y acceso a la tierra
+\item Justicia transicional y memoria histórica
+\item Paz como proceso transformador (no solo ausencia de conflicto)
+\item Se visibilizan voces o demandas de grupos marginados como sujetos políticos
+\item Se identifican estructuras o sistemas como fuente de desigualdad a transformar (sistema de salud,
+modelo agrario, etc.)
+\item Se critica el \emph{statu quo} como reproductor de inequidad y se proponen cambios estructurales
+\end{itemize}
+
+\textbf{Escala (Ordinal, 1–5):}
+\begin{longtable}{@{}>{\centering\arraybackslash}p{1.1cm}p{14.3cm}@{}}
+\toprule \textbf{Nivel} & \textbf{Descripción operacional}\\ \midrule\endhead
+1 & No hay reivindicaciones de cambio social, igualdad o derechos; el texto es neutro o conservador.\\
+\addlinespace
+2 & Mención a temas sociales o grupos vulnerables, sin que sea el argumento central del texto.\\
+\addlinespace
+3 & El texto incluye varias menciones a justicia social, inclusión o reforma, combinadas con otros temas.\\
+\addlinespace
+4 & La narrativa está orientada explícitamente a transformar inequidades; los derechos o la justicia social
+son ejes centrales.\\
+\addlinespace
+5 & Todo el texto es una proclama de transformación radical, exigiendo cambios estructurales y
+reivindicando derechos de grupos oprimidos.\\
+\bottomrule
+\end{longtable}
+
+\ejemplo{Nivel 5 (Dominante)}{La paz real y duradera es imposible sin una reforma agraria integral que
+devuelva la tierra al campesinado y a las comunidades indígenas. Nuestro imperativo es transformar las
+estructuras de exclusión histórica, garantizando los derechos plenos de las mujeres y diversidades, mientras
+aceleramos una transición justa para dejar atrás el modelo económico extractivista que destruye la vida.}
+
+\ejemplo{Nivel 1 (Ausente)}{El gremio empresarial hizo un llamado urgente a mantener la estabilidad
+jurídica y a no modificar la actual legislación laboral. Los voceros del sector aseguraron que cualquier intento
+de reforma estructural en este momento ahuyentará la inversión extranjera y pondrá en riesgo el libre
+desarrollo de los mercados, que son el único motor real para generar riqueza.}
+
+\metaficha{\texttt{v2paminor} (Minority rights), \texttt{v2palgbt} (LGBT social equality),
+\texttt{v2pagender} (Gender equality), \texttt{v2pawelf} (Welfare, orientación universalista)}
+
+\dimtitulo{Conservadurismo}{id\_cons}
+\textbf{Eje teórico:} Eje Sociocultural: Progresismo vs. Conservadurismo
+
+\textbf{Pregunta:} Grado en que el texto enfatiza valores tradicionales, orden social, seguridad, mano dura,
+propiedad privada, familia tradicional, religión, gradualismo y escepticismo ante cambios rápidos
+(especialmente en paz, tierras, drogas).
+
+\textbf{Marcadores léxicos y discursivos:}
+\begin{itemize}
+\item Defensa de la propiedad privada y libre mercado
+\item Valores familiares tradicionales
+\item Religiosidad y moral cristiana como fundamento social
+\item Autoridad, orden, seguridad y mano dura
+\item Resistencia al cambio social (“así siempre ha sido”, tradiciones)
+\item Defensa del \emph{statu quo} y estabilidad institucional
+\item Se defiende el orden público, la autoridad estatal o el control del crimen como prioridades políticas
+\item Conservadurismo colombiano apoyado en tres pilares: ortodoxia institucional/económica (propiedad
+privada, libre empresa), exigencia de orden y autoridad (mano dura frente al crimen o la protesta, respaldo
+irrestricto a la Fuerza Pública), y moral tradicional/religiosa (familia clásica como núcleo de la sociedad)
+\item Se asocian posiciones progresistas o reformistas con riesgo, caos o pérdida de valores
+\end{itemize}
+
+\textbf{Escala (Ordinal, 1–5):}
+\begin{longtable}{@{}>{\centering\arraybackslash}p{1.1cm}p{14.3cm}@{}}
+\toprule \textbf{Nivel} & \textbf{Descripción operacional}\\ \midrule\endhead
+1 & No hay apelación a la tradición, al orden ni a la autoridad; el texto puede ser neutral o proclive al
+cambio.\\
+\addlinespace
+2 & Alguna referencia al orden o valores conservadores, pero sin que articule el enfoque del artículo.\\
+\addlinespace
+3 & Aparecen varias referencias a la estabilidad, la moral tradicional o la fuerza pública como elementos
+relevantes, pero no lo son todo.\\
+\addlinespace
+4 & La defensa de la familia, la fe, el orden público y la autoridad es un tema central y constante; el cambio
+se califica como amenaza.\\
+\addlinespace
+5 & Texto saturado de retórica de mano dura, valores tradicionales y rechazo al cambio social.\\
+\bottomrule
+\end{longtable}
+
+\ejemplo{Nivel 5 (Dominante)}{No vamos a permitir que bajo el pretexto de un falso ‘cambio’ se destruyan
+las instituciones, se premie a los delincuentes y se amenace la propiedad privada. Aquí lo que se necesita es
+respaldar a nuestra Fuerza Pública con firmeza y autoridad para recuperar el orden, mientras defendemos la
+familia como núcleo sagrado de la sociedad frente a ideologías que buscan destruir nuestros valores.}
+
+\ejemplo{Nivel 1 (Ausente)}{La reforma radicada busca transformar de raíz el modelo vigente mediante la
+redistribución equitativa de las tierras improductivas y la garantía plena de los derechos sexuales y
+reproductivos. Es imperativo dejar atrás las estructuras anticuadas que han perpetuado la desigualdad para
+construir una sociedad nueva y moderna.}
+
+\metaficha{\texttt{v2parelig} (Religious principles), \texttt{v2paculsup} (Cultural superiority),
+\texttt{v2palgbt} (inverso — oposición a igualdad LGBT), \texttt{v2pawelf} (orientación \emph{means-tested})}
+
+\newpage
+\subsection{Eje de Gobernanza y Discurso Estamental: Populismo vs. Institucionalismo}
+
+\dimtitulo{Populismo}{id\_popu}
+\textbf{Eje teórico:} Eje de Gobernanza y Discurso Estamental: Populismo vs. Institucionalismo
+
+\textbf{Pregunta:} Grado en que el texto usa retórica que divide a la sociedad en “pueblo puro/virtuoso”
+versus “élite corrupta”, apelando directamente a la voluntad popular contra las instituciones tradicionales.
+
+\textbf{Marcadores léxicos y discursivos:}
+\begin{itemize}
+\item Dicotomía explícita pueblo vs. élite (“los de arriba”, “los de siempre”, “la oligarquía”, “el pueblo”)
+\item Lenguaje anti-establecimiento y deslegitimación de instituciones existentes
+\item Apelación emocional directa a las masas
+\item Simplificación de problemas complejos en “buenos vs. malos”
+\item Demonización de adversarios políticos
+\item Uso de “nosotros” inclusivo contra “ellos” corrupto/privilegiado
+\item Se apela a la “voluntad popular” o “el mandato del pueblo” para justificar acciones
+\item Se invocan emociones de agravio, injusticia histórica o reivindicación colectiva
+\end{itemize}
+
+\textbf{Escala (Ordinal, 1–5):}
+\begin{longtable}{@{}>{\centering\arraybackslash}p{1.1cm}p{14.3cm}@{}}
+\toprule \textbf{Nivel} & \textbf{Descripción operacional}\\ \midrule\endhead
+1 & Texto técnico, neutral o diplomático, sin apelación emocional ni dicotomías. No se detecta la división
+pueblo-élite; los actores se presentan sin esa carga antagónica.\\
+\addlinespace
+2 & Alguna referencia a desigualdad pero sin antagonismo explícito.\\
+\addlinespace
+3 & La narrativa establece tensión entre sectores populares y élites, pero de forma descriptiva más que
+movilizadora.\\
+\addlinespace
+4 & El texto articula explícitamente la división pueblo/élite y la usa como marco interpretativo central.\\
+\addlinespace
+5 & Todo el mensaje se articula en torno a esa oposición; el pueblo es exaltado como la única fuente de
+virtud y la élite es demonizada como responsable de todos los males, con alta simplificación y afectividad.\\
+\bottomrule
+\end{longtable}
+
+\ejemplo{Nivel 5 (Dominante)}{Este no es el proyecto de las oligarquías que por décadas se han robado y
+repartido el país a sus espaldas. Este es el mandato del pueblo, de las familias trabajadoras y de ‘los nadies’
+que hoy se levantan contra una élite corrupta, privilegiada y excluyente que solo ha legislado para sus
+propios bolsillos desde sus clubes privados.}
+
+\ejemplo{Nivel 1 (Ausente)}{El informe del Departamento Administrativo Nacional de Estadística (DANE)
+señaló una contracción del 1.2\,\% en la demanda interna. Los analistas del sector financiero explicaron que
+este fenómeno responde a ajustes macroeconómicos y a la estabilización de las tasas de interés por parte de
+la junta directiva del Banco de la República.}
+
+\metaficha{\texttt{v2paanteli} (Anti-elitism), \texttt{v2papeople} (People-centrism), \texttt{v2xpa\_popul}
+(Índice de Populismo, tipo D)}
+
+% ---------------- INSTITUCIONALISMO (REESCRITO EN v1.1) ----------------
+\dimtitulo{Institucionalismo}{id\_inst}
+\textbf{Eje teórico:} Eje de Gobernanza y Discurso Estamental: Populismo vs. Institucionalismo
+
+\caja{nuevo}{Revisado en v1.1}{%
+Esta ficha se reescribió tras la primera ronda de anotación, en la que absorbió el 81,6\,\% de las
+asignaciones. Cambian los marcadores, se añade una lista de \textbf{no-marcadores} y se redefinen los
+niveles 2 y 3 de la escala. La \textbf{definición teórica de la dimensión no cambia}: sigue siendo el
+compromiso con el pluralismo y el procedimiento, anclado en \texttt{v2paplur}. Lo que cambia es el umbral de
+evidencia exigido para afirmar que ese compromiso está presente. Ver Apéndice D.}
+
+\textbf{Pregunta:} Grado en que el texto \textbf{argumenta} que las instituciones, los procesos legales
+formales y el Estado de derecho deben ser los ejes de la acción política. La legitimidad se ancla en normas,
+procedimientos y organismos formales, y no en voluntades individuales.
+
+\caja{tinte}{Criterio de activación}{%
+La dimensión se activa cuando el texto \textbf{defiende, reclama o evalúa} el procedimiento institucional —no
+cuando simplemente \textbf{ocurre dentro} de él. La pregunta operativa es: \emph{¿el texto sostiene que el
+procedimiento importa, o solo relata un hecho que sucedió a través de una institución?}}
+
+\textbf{Marcadores léxicos y discursivos:}
+\begin{itemize}
+\item Se argumenta que la \textbf{validez} de una decisión política depende de que se haya seguido el
+procedimiento debido
+\item Se defiende explícitamente la separación de poderes, el debido proceso, la independencia judicial o la
+de los órganos de control
+\item Se señala una \textbf{irregularidad procedimental} como el problema central del asunto relatado
+\item Se condenan las vías de hecho, los decretos por fuera del trámite legislativo o los saltos de la legalidad
+\item Se apela al pluralismo o al respeto de «las reglas del juego» frente a la voluntad mayoritaria o la
+urgencia política
+\item Se evalúa a un actor político —a favor o en contra— \textbf{por su respeto a las reglas
+institucionales}, y no por sus resultados, su carisma o su ideología
+\item Léxico jurídico (decretos, leyes, artículos, sentencias) \textbf{cuando sostiene el argumento}, no
+cuando solo describe el hecho relatado
+\end{itemize}
+
+\caja{pend}{No son marcadores de Institucionalismo \normalfont\small(nuevo en v1.1)}{%
+Los siguientes rasgos, \textbf{por sí solos}, no otorgan puntaje por encima de 2:\par\smallskip
+\textbf{(a) Que una entidad pública sea el sujeto de la noticia.} «La Alcaldía entregó», «la Corporación
+acompañó al municipio», «el Congreso aprobó», «la Agencia analizará». Es el modo normal de narrar la
+gestión pública en Colombia, no un encuadre ideológico.\par\smallskip
+\textbf{(b) El tono neutro, formal o burocrático.} La neutralidad es la \textbf{ausencia} de encuadre: así se
+define, de hecho, el Nivel 1 de las otras siete dimensiones de este codebook. Contarla \emph{a favor} de
+Institucionalismo convertiría a esta dimensión en el destino por defecto de todo texto sin encuadre, que es
+exactamente lo que ocurrió en la primera ronda (Apéndice D). \emph{Este marcador figuraba en v1.0 y se
+retira en v1.1.}\par\smallskip
+\textbf{(c) La mención de una norma, resolución o sentencia como dato del hecho relatado.} Citar la
+Resolución 0450 porque es la noticia no es lo mismo que argumentar que la Resolución 0450 debía expedirse
+siguiendo cierto trámite.\par\smallskip
+\textbf{(d) Que el tema sea legislativo, judicial o administrativo.} El tema no es el encuadre (§1.5). Una
+noticia sobre un debate en el Congreso puede ser Personalismo (si gira sobre la figura del ponente),
+Populismo (si lo enmarca como pueblo contra élite) o Progresismo (si lo enmarca como conquista de
+derechos).}
+
+\textbf{Escala (Ordinal, 1–5):}
+\begin{longtable}{@{}>{\centering\arraybackslash}p{1.1cm}p{14.3cm}@{}}
+\toprule \textbf{Nivel} & \textbf{Descripción operacional}\\ \midrule\endhead
+1 & No hay referencias a instituciones, leyes ni procedimientos formales; o se los menciona únicamente para
+desestimarlos, ignorarlos o pasar por encima de ellos.\\
+\addlinespace
+2 & \textbf{(Revisado en v1.1)} Las instituciones aparecen como \textbf{sujeto gramatical} de la acción («el
+Congreso aprobó», «la Corte determinó», «la Alcaldía anunció») o se cita una norma, pero el texto se limita
+a \textbf{informar}: no argumenta que el procedimiento importe. La narrativa es informativa, no valorativa.
+\emph{Este es el nivel por defecto de la nota administrativa, de gestión o de comunicado institucional.}\\
+\addlinespace
+3 & \textbf{(Revisado en v1.1)} El texto \textbf{valora explícitamente} algún proceso formal: respalda un
+fallo, defiende un trámite, o señala una irregularidad procedimental como problema. Ese marco convive con
+otros (pugna entre líderes, posición ideológica, reivindicación social) sin predominar sobre ellos.\\
+\addlinespace
+4 & El texto argumenta de forma repetida y central que la validez de una decisión política depende de que se
+haya seguido el procedimiento. Si hay polémica, el foco está en si se respetaron las reglas, no en las
+personas.\\
+\addlinespace
+5 & El texto defiende activamente el debido proceso, la separación de poderes o el pluralismo como valor
+superior. Hay condena explícita de las vías de hecho, de los decretos por fuera del trámite legislativo o de
+los saltos de la legalidad; la voluntad política individual se subordina al marco institucional.\\
+\bottomrule
+\end{longtable}
+
+\ejemplo{Nivel 5 (Dominante)}{La Sala Plena de la Corte Constitucional declaró inexequible el artículo 4 de
+la reforma, tras concluir que durante el trámite legislativo en el Congreso de la República se vulneró el
+principio de consecutividad. En su providencia, el alto tribunal exhortó al Ejecutivo a expedir una nueva
+reglamentación ceñida a los parámetros legales vigentes.}
+
+\caja{nuevo}{Ejemplo — Nivel 2 \normalfont\small(nuevo en v1.1: el caso que más se confundió)}{%
+\emph{La Agencia Nacional de Infraestructura analizará la posibilidad de reubicar el peaje del kilómetro 7. La
+entidad informó que la solicitud fue radicada por la administración municipal y que la decisión se tomará una
+vez se complete el estudio técnico contratado para tal fin.}\par\smallskip
+\textbf{Por qué es Nivel 2 y no Nivel 3 ni superior:} hay una entidad del Estado como sujeto, un trámite
+(«radicada») y un procedimiento («estudio técnico»). Pero el texto \textbf{no argumenta} que ese
+procedimiento deba seguirse: lo relata porque es el hecho noticioso. Aplicando la prueba de sustracción
+(§1.5), si se retira el encuadre institucional el argumento no se cae —sigue habiendo una noticia sobre un
+peaje—, solo cambia quién la protagoniza.\par\smallskip
+\textbf{Qué lo convertiría en Nivel 4 o 5:} que el texto sostuviera, por ejemplo, que la reubicación
+\emph{no puede} decidirse por fuera del estudio técnico, o que denunciara que se pretende reubicar el peaje
+saltándose el trámite. Ahí el procedimiento pasa de ser el escenario a ser el argumento.}
+
+\ejemplo{Nivel 1 (Ausente)}{¡Aquí no vinimos a pedir permiso, vinimos a hacer historia! Yo les garantizo que
+las cosas se van a hacer a mi manera, porque es lo que el pueblo en las calles me está exigiendo. No me
+importan las trabas que nos pongan los mismos de siempre, mi voluntad es cumplirles hoy mismo.}
+
+\metaficha{\texttt{v2paplur} (Political pluralism); inverso conceptual de \texttt{v2xpa\_antiplural} (Índice de
+Anti-pluralismo, tipo D)}
+
+\newpage
+\subsection{Eje de Política Exterior: Soberanismo vs. Globalismo}
+
+\dimtitulo{Soberanismo}{id\_sob}
+\textbf{Eje teórico:} Eje de Política Exterior: Soberanismo vs. Globalismo
+
+\textbf{Pregunta:} Grado en que el texto prioriza la autonomía, la integridad territorial y la
+autodeterminación de Colombia frente a actores externos (organismos internacionales, potencias extranjeras,
+empresas transnacionales, migrantes), presentando la soberanía nacional como valor político supremo.
+
+\textbf{Marcadores léxicos y discursivos:}
+\begin{itemize}
+\item Defensa de fronteras y soberanía territorial
+\item Proteccionismo económico (producción nacional, industria local)
+\item Rechazo a injerencia extranjera (“no nos van a imponer”)
+\item Nacionalismo y orgullo patrio
+\item Énfasis en recursos naturales propios y su control
+\item Se apela a identidad nacional, recursos naturales propios o fronteras como bienes a defender
+\item Rechazo a injerencia externa en el contexto colombiano: en la izquierda $\rightarrow$ proteccionismo
+agrario, crítica a la política antidrogas de EE.\,UU. y a los TLC; en la derecha $\rightarrow$ defensa
+territorial en San Andrés y rechazo a organismos como la ONU o la CIDH frente al orden público
+\end{itemize}
+
+\textbf{Escala (Ordinal, 1–5):}
+\begin{longtable}{@{}>{\centering\arraybackslash}p{1.1cm}p{14.3cm}@{}}
+\toprule \textbf{Nivel} & \textbf{Descripción operacional}\\ \midrule\endhead
+1 & No hay alusiones a la soberanía ni a injerencia externa; la interacción internacional se presenta como
+cooperación natural.\\
+\addlinespace
+2 & Mención puntual a soberanía o actores externos, sin que articule el argumento principal del texto.\\
+\addlinespace
+3 & Se expresan varias inquietudes sobre presiones externas o se defiende la capacidad de decidir, sin ser el
+tema central.\\
+\addlinespace
+4 & La protección de la soberanía y la crítica a intervenciones foráneas son parte central del discurso;
+lenguaje cargado de “defensa nacional”.\\
+\addlinespace
+5 & El texto se estructura como una defensa frontal de la soberanía, denunciando amenazas externas
+(embajadas, ONG, organismos multilaterales) y exigiendo decisiones sin ataduras foráneas.\\
+\bottomrule
+\end{longtable}
+
+\ejemplo{Nivel 5 (Dominante)}{No podemos permitir que tribunales internacionales, ONG extranjeras o
+potencias nos vengan a dictar cómo manejar nuestro orden interno o la política antidrogas. La soberanía de
+Colombia se respeta; las decisiones sobre nuestro territorio y nuestras leyes las tomamos los colombianos,
+sin arrodillarnos ante imposiciones externas.}
+
+\ejemplo{Nivel 1 (Ausente)}{El Ministerio presentó la nueva hoja de ruta económica, diseñada en estricta
+coordinación con las recomendaciones del Fondo Monetario Internacional y la OCDE. El objetivo es homologar
+nuestros estándares normativos para integrarnos plenamente a los mercados globales y atraer inversión
+extranjera.}
+
+\metaficha{Sin variable V-Party dedicada. Eje de política exterior derivado del marco teórico propio del
+proyecto (Anteproyecto, §5.3, eje 3).}
+
+\dimtitulo{Globalismo}{id\_glob}
+\textbf{Eje teórico:} Eje de Política Exterior: Soberanismo vs. Globalismo
+
+\textbf{Pregunta:} Grado en que el texto valora la cooperación internacional, la adhesión a normas globales y
+la interdependencia como herramientas para abordar problemas políticos.
+
+\textbf{Marcadores léxicos y discursivos:}
+\begin{itemize}
+\item Mención de organismos internacionales (ONU, OCDE, FMI, BID, OMS)
+\item Tratados de libre comercio y apertura económica
+\item Cooperación internacional y ayuda multilateral
+\item Estándares y normativas globales
+\item Inversión extranjera como valor positivo
+\item Integración regional (CAN, Alianza del Pacífico, Mercosur)
+\item Se compara la situación colombiana con tendencias o normas de otros países o regiones
+\item Se apela a compromisos de Colombia ante la comunidad internacional
+\end{itemize}
+
+\textbf{Escala (Ordinal, 1–5):}
+\begin{longtable}{@{}>{\centering\arraybackslash}p{1.1cm}p{14.3cm}@{}}
+\toprule \textbf{Nivel} & \textbf{Descripción operacional}\\ \midrule\endhead
+1 & No hay mención de organismos internacionales, normas globales ni cooperación; el enfoque es puramente
+doméstico.\\
+\addlinespace
+2 & Mención incidental a contexto internacional, sin que sea argumento ni eje narrativo.\\
+\addlinespace
+3 & Las referencias a la comunidad internacional o a tratados complementan el análisis, pero no son el eje.\\
+\addlinespace
+4 & La cooperación internacional, los estándares multilaterales o las alianzas globales son un pilar repetido
+del discurso.\\
+\addlinespace
+5 & Todo el mensaje está basado en la necesidad de alinearse a la comunidad internacional, cumplir tratados
+y recurrir a mecanismos globales; se usan expresiones como “compromiso internacional”, “estándares
+globales”, “responsabilidad compartida”, y se descalifica el aislacionismo.\\
+\bottomrule
+\end{longtable}
+
+\ejemplo{Nivel 5 (Dominante)}{El canciller reiteró que el camino para el desarrollo del país exige consolidar
+nuestra participación en la OCDE y fortalecer los lazos comerciales mediante la Alianza del Pacífico. Además,
+destacó que la cooperación técnica del Banco Interamericano de Desarrollo y el cumplimiento de la agenda
+climática global de la ONU serán la brújula para atraer la inversión extranjera que necesitamos.}
+
+\ejemplo{Nivel 1 (Ausente)}{La Alcaldía anunció que destinará recursos propios para financiar a las
+asociaciones de recicladores del municipio. El programa, que busca formalizar el trabajo de estas
+cooperativas locales, será operado directamente por la Secretaría de Inclusión Social y dependerá del
+presupuesto aprobado por el Concejo Municipal para el próximo año.}
+
+\metaficha{Sin variable V-Party dedicada. Eje de política exterior derivado del marco teórico propio del
+proyecto (Anteproyecto, §5.3, eje 3).}
+
+\newpage
+\subsection{Eje de Estructura de Liderazgo: Personalismo vs. Doctrinarismo}
+
+\dimtitulo{Personalismo}{id\_pers}
+\textbf{Eje teórico:} Eje de Estructura de Liderazgo: Personalismo vs. Doctrinarismo
+
+\textbf{Pregunta:} Grado en que el texto enfatiza a un líder individual (su carisma, voluntad, decisiones o
+figura) como eje central de la política, por encima de partidos o instituciones.
+
+\textbf{Marcadores léxicos y discursivos:}
+\begin{itemize}
+\item Deícticos de primera persona (“yo decidí”, “mi gobierno”, “lo logró”, “visión de…”, “el presidente
+ordenó”, “su pueblo”)
+\item Nombre del líder como sujeto reiterado de la acción política
+\item Retórica carismática, emocional y directa
+\item Promesas personales o lenguaje de lealtad (“yo les prometo”, “conmigo va a cambiar”)
+\item Culto a la personalidad o heroización del líder
+\item Ausencia de referencias a procesos institucionales
+\end{itemize}
+
+\textbf{Escala (Ordinal, 1–5):}
+\begin{longtable}{@{}>{\centering\arraybackslash}p{1.1cm}p{14.3cm}@{}}
+\toprule \textbf{Nivel} & \textbf{Descripción operacional}\\ \midrule\endhead
+1 & No hay referencia a figuras individuales. Texto puramente institucional.\\
+\addlinespace
+2 & Se menciona un líder de forma ocasional pero como parte de un proceso institucional, sin centralidad
+como referente necesario.\\
+\addlinespace
+3 & El líder es un actor relevante y se mencionan algunas de sus características, pero no monopoliza la
+narrativa.\\
+\addlinespace
+4 & La personalidad del líder y sus atributos (carisma, trayectoria, autenticidad) estructuran buena parte del
+argumento.\\
+\addlinespace
+5 & El texto depende casi por completo de la figura del líder, exaltando sus virtudes y presentándolo como
+motor único de la acción política, sin mediación institucional.\\
+\bottomrule
+\end{longtable}
+
+\ejemplo{Nivel 5 (Dominante)}{El mandatario asumió todo el crédito por los avances del proyecto,
+asegurando desde la tarima: ‘Fui yo quien tomó la decisión valiente de enfrentar a las mafias cuando nadie
+más quería hacerlo. Mi gobierno ha logrado lo que no se hizo en 20 años’. Durante su discurso, la figura del
+dirigente opacó por completo el trámite legislativo, presentándose como el salvador indispensable del
+proceso.}
+
+\ejemplo{Nivel 1 (Ausente)}{El Ministerio de Hacienda expidió la Resolución 0450, mediante la cual se
+reglamentan las nuevas tarifas de retención. El documento técnico fue producto de varias mesas de diálogo
+interinstitucional y su implementación estará a cargo de las direcciones regionales de la DIAN durante el
+próximo trimestre.}
+
+\caja{tinte}{Nota de coordinación con §3.2 \normalfont\small(nueva en v1.1)}{%
+El ejemplo de Nivel 1 anterior ilustra la ausencia de \emph{Personalismo}. No debe leerse como evidencia de
+\emph{Institucionalismo} alto: según la escala revisada de §3.2, ese mismo texto puntúa \textbf{2} en
+\texttt{id\_inst}, porque las entidades son sujeto de la acción pero el texto no argumenta sobre el valor del
+procedimiento. Si ninguna otra dimensión supera 2, el artículo se clasifica como «Sin encuadre ideológico
+dominante» (§2.1, regla 3). Un texto administrativo neutro no es, por serlo, un texto institucionalista.}
+
+\metaficha{\texttt{v2paind} (Personalization of party)}
+
+\dimtitulo{Doctrinarismo}{id\_doct}
+\textbf{Eje teórico:} Eje de Estructura de Liderazgo: Personalismo vs. Doctrinarismo
+
+\textbf{Pregunta:} Grado en que el texto presenta posiciones políticas como derivadas de un cuerpo ideológico
+rígido y cerrado (de cualquier signo), al que se apela como autoridad o guía, mostrando resistencia a la
+adaptación pragmática o al diálogo con posturas distintas.
+
+\textbf{Marcadores léxicos y discursivos:}
+\begin{itemize}
+\item Uso frecuente de palabras “-ismos” (socialismo, neoliberalismo, marxismo, uribismo)
+\item Citas a teóricos, manifiestos o doctrinas políticas
+\item Se invocan principios o textos doctrinarios (constitucionales, religiosos, marxistas, libertarios, etc.)
+como argumento de autoridad inapelable
+\item Abstracción ideológica elevada, alejada de lo concreto
+\item Dogmatismo: rechazo absoluto de posiciones intermedias
+\item Marco teórico como lente único para interpretar la realidad
+\item Lenguaje prescriptivo basado en doctrina (“según la teoría de…”)
+\item El lenguaje es categórico, sin matices: “siempre”, “nunca”, “es imposible que”, “la única vía es”
+\end{itemize}
+
+\textbf{Escala (Ordinal, 1–5):}
+\begin{longtable}{@{}>{\centering\arraybackslash}p{1.1cm}p{14.3cm}@{}}
+\toprule \textbf{Nivel} & \textbf{Descripción operacional}\\ \midrule\endhead
+1 & No hay presencia de doctrinas rígidas; el texto es pragmático o acepta matices.\\
+\addlinespace
+2 & Alguna referencia a principios ideológicos, pero sin presentarlos como inapelables o excluyentes, de
+forma pragmática.\\
+\addlinespace
+3 & Se advierten referencias recurrentes a un ideario definido, pero se admiten otros enfoques.\\
+\addlinespace
+4 & El texto articula sus argumentos principalmente desde una posición ideológica rígida y descalifica
+posturas alternativas.\\
+\addlinespace
+5 & El texto es un manifiesto doctrinal puro; todo se subordina a la pureza ideológica y cualquier concesión
+es tratada como traición; lenguaje categórico (“principios innegociables”, “traición a los fundamentos”).\\
+\bottomrule
+\end{longtable}
+
+\ejemplo{Nivel 5 (Dominante)}{La crisis estructural que atravesamos es la consecuencia ineludible del
+modelo neoliberal y la acumulación por desposesión del capitalismo periférico. Siguiendo la teoría de la
+dependencia, es evidente que cualquier reformismo tibio está condenado al fracaso; la única vía histórica es
+desmantelar la hegemonía burguesa y avanzar hacia una transición socialista que recupere los medios de
+producción.}
+
+\ejemplo{Nivel 1 (Ausente)}{Para mitigar los trancones en la entrada sur de la ciudad, la Secretaría de
+Movilidad anunció que habilitará un carril de contraflujo entre las 5:00 a.m. y las 8:00 a.m. Adicionalmente,
+se destinarán 2.000 millones de pesos para tapar los huecos del corredor principal, con el fin de agilizar la
+velocidad promedio de los vehículos de carga y transporte público.}
+
+\metaficha{Sin variable V-Party dedicada. Concepto complementario definido por el equipo del proyecto como
+contraparte de \texttt{v2paind} (Personalization of party).}
+
+\newpage
+% ============================ APÉNDICES ============================
+\appendix
+\section{Glosario}
+\begin{longtable}{@{}p{4.3cm}p{11.1cm}@{}}
+\toprule \textbf{Término} & \textbf{Definición}\\ \midrule\endhead
+\emph{Chunking} (segmentación por bloques) & División de un texto extenso en fragmentos de longitud fija
+para superar el límite de 512 tokens de las arquitecturas tipo BERT-encoder.\\
+\addlinespace
+Codebook & Conjunto de categorías, definiciones y criterios operacionales para clasificar/anotar datos de
+forma consistente entre codificadores.\\
+\addlinespace
+\emph{Framing} (encuadre) & Selección, énfasis y omisión intencional de aspectos de un hecho por parte de un
+medio, que produce narrativas divergentes sobre un mismo evento (Entman, 1993).\\
+\addlinespace
+Gold Set & Conjunto de datos anotado manualmente por los investigadores, auditado y validado, usado como
+estándar de verdad (\emph{Ground Truth}).\\
+\addlinespace
+Silver Set & Conjunto de datos etiquetado por un LLM siguiendo el codebook, auditado mediante muestras
+aleatorias contra el Gold Set.\\
+\addlinespace
+\emph{Ground Truth} & Información de referencia considerada correcta para efectos de entrenamiento y
+evaluación del modelo.\\
+\addlinespace
+Alfa de Krippendorff ($\alpha$) & Métrica de concordancia entre codificadores:
+$\alpha = 1 - (D_o / D_e)$, donde $D_o$ es el desacuerdo observado y $D_e$ el desacuerdo esperado por azar.
+Umbral de aceptación en este proyecto: $\alpha \geq 0.8$.\\
+\addlinespace
+\emph{Softmax} & Función de activación de la capa de salida del clasificador que normaliza 8 puntuaciones
+crudas en una distribución de probabilidad cuya suma es 1.0.\\
+\addlinespace
+Unidad de codificación & Fragmento de texto (artículo completo, párrafo o \emph{chunk}) sobre el cual se
+asigna un puntaje. Ver §1.6.\\
+\addlinespace
+Clase ideológica predominante & Etiqueta categórica única derivada del \emph{argmax} de las 8 dimensiones
+ideológicas puntuadas para un mismo texto (ver §2).\\
+\addlinespace
+Tasa base de activación espuria \emph{(v1.1)} & Frecuencia con que los marcadores superficiales de una
+dimensión aparecen en textos que no tienen ese encuadre. Una tasa alta hace que la dimensión gane
+\emph{argmax} por acumulación de indicios débiles y no por dominancia real. Ver Apéndice D.\\
+\bottomrule
+\end{longtable}
+
+\section{Plantilla de Captura de Datos — Gold Set}
+Estructura de columnas sugerida para la hoja de cálculo o base de datos donde se registre la anotación
+manual. Cada fila corresponde a un artículo (unidad de codificación, §1.6).
+
+\begin{longtable}{@{}p{3.5cm}p{9.1cm}p{2.6cm}@{}}
+\toprule \textbf{Columna} & \textbf{Descripción} & \textbf{Tipo}\\ \midrule\endhead
+\texttt{article\_id} & Identificador único del artículo (del pipeline de scraping) & Texto\\
+\texttt{medio} & Nombre del medio de comunicación & Texto\\
+\texttt{segmento\_medio} & Nacional / independiente / institucional / regional / gremial (Anteproyecto 4.1) &
+Categórica\\
+\texttt{fecha\_publicacion} & Fecha de publicación de la noticia & Fecha\\
+\texttt{url} & Enlace original de la noticia & Texto\\
+\addlinespace
+\texttt{id\_prog} & Puntaje Progresismo & 1–5\\
+\texttt{id\_cons} & Puntaje Conservadurismo & 1–5\\
+\texttt{id\_popu} & Puntaje Populismo & 1–5\\
+\texttt{id\_inst} & Puntaje Institucionalismo & 1–5\\
+\texttt{id\_sob} & Puntaje Soberanismo & 1–5\\
+\texttt{id\_glob} & Puntaje Globalismo & 1–5\\
+\texttt{id\_pers} & Puntaje Personalismo & 1–5\\
+\texttt{id\_doct} & Puntaje Doctrinarismo & 1–5\\
+\addlinespace
+\texttt{id\_pred} & Clase ideológica predominante (derivada, §2). Admite el valor
+\texttt{sin\_encuadre}. \emph{(Ampliado en v1.1)} & Categórica\\
+\texttt{id\_pred\_fuerza} & \emph{(Nuevo en v1.1)} Puntaje 1–5 de la dimensión señalada en
+\texttt{id\_pred}. Obligatorio; es lo que permite aplicar la regla de umbral (§2.1, regla 3) & 1–5\\
+\texttt{procedimiento} & \emph{(Nuevo en v1.1)} \texttt{completo} (8 puntajes) o \texttt{abreviado}
+(§2.2). Determina si el artículo entra en el cálculo de $\alpha$ por dimensión & Categórica\\
+\addlinespace
+\texttt{codificador} & Investigador que asignó el puntaje & Texto\\
+\texttt{comentarios} & Justificación de casos ambiguos o límite (ver Apéndice C) & Texto libre\\
+\bottomrule
+\end{longtable}
+
+\section{Sección de Comentarios}
+Análogo a las variables \texttt{v2padatacom} / \texttt{v2paccpar} del codebook V-Party. Cada codificador debe
+dejar un comentario cuando:
+\begin{itemize}
+\item El puntaje asignado a alguna dimensión fue difícil de decidir entre dos niveles adyacentes.
+\item El texto activó una dimensión no cubierta claramente por los marcadores léxicos listados.
+\item Se aplicó la regla de empate o la regla de umbral mínimo de §2.1.
+\item \emph{(Nuevo en v1.1)} Se recurrió al criterio determinístico de respaldo de §2.1, regla 2, indicando
+cuál de los literales (a), (b) o (c) se aplicó.
+\item Se considera que el codebook debería ajustarse (nueva definición, nuevo marcador, ejemplo adicional).
+\end{itemize}
+Estos comentarios no forman parte del dataset de entrenamiento, pero son el insumo principal para las
+iteraciones de versión de este codebook (ver Tabla de control de versiones). El Apéndice D es un ejemplo de
+ese uso.
+
+\newpage
+\section{Registro Razonado de Cambios (v1.0 $\rightarrow$ v1.1)}
+\emph{Apéndice nuevo en v1.1. Documenta la evidencia que motivó cada cambio, en cumplimiento del
+protocolo de iteración del codebook (§1.7).}
+
+\subsection{Evidencia: primera ronda de anotación}
+Sobre el Gold Set en construcción se completaron \textbf{207 artículos} anotados por un codificador con la
+versión 1.0 del codebook, usando una interfaz que capturaba únicamente la clase dominante
+(\texttt{id\_pred}), sin los ocho puntajes. La distribución resultante fue:
+
+\begin{longtable}{@{}p{5.2cm}>{\centering\arraybackslash}p{2.6cm}>{\centering\arraybackslash}p{2.6cm}@{}}
+\toprule \textbf{Clase asignada} & \textbf{n} & \textbf{\%}\\ \midrule\endhead
+Institucionalismo & 169 & 81,6\,\%\\
+Personalismo      &  10 &  4,8\,\%\\
+Globalismo        &   9 &  4,3\,\%\\
+Progresismo       &   9 &  4,3\,\%\\
+Soberanismo       &   3 &  1,4\,\%\\
+Conservadurismo   &   3 &  1,4\,\%\\
+Populismo         &   2 &  1,0\,\%\\
+Doctrinarismo     &   2 &  1,0\,\%\\
+\midrule
+\textbf{Total}    & \textbf{207} & \textbf{100\,\%}\\
+\bottomrule
+\end{longtable}
+
+Para descartar que el sesgo proviniera de la composición del corpus —por ejemplo, de un exceso de fuentes
+institucionales— se desagregó por categoría de medio. Institucionalismo domina en \textbf{todas} las
+categorías, incluidas las de opinión y las independientes, que son las que por diseño deberían concentrar el
+encuadre explícito:
+
+\begin{longtable}{@{}p{4.4cm}>{\centering\arraybackslash}p{3.2cm}>{\centering\arraybackslash}p{3.0cm}@{}}
+\toprule \textbf{Categoría de fuente} & \textbf{Institucionalismo} & \textbf{\%}\\ \midrule\endhead
+Regional        & 77 / 87 & 88,5\,\%\\
+Gremial         & 20 / 24 & 83,3\,\%\\
+Opinión (\emph{think tanks}) & 16 / 20 & 80,0\,\%\\
+Institucional   & 33 / 43 & 76,7\,\%\\
+Nacional        & 11 / 15 & 73,3\,\%\\
+Independiente   &  9 / 15 & 60,0\,\%\\
+Judicial        &  3 /  3 & 100\,\%\\
+\bottomrule
+\end{longtable}
+
+\subsection{Diagnóstico: tres causas convergentes}
+
+\textbf{(1) Asimetría en el tratamiento de la neutralidad.} Las otras siete dimensiones usan la palabra
+«neutral» para definir su \textbf{Nivel 1}, es decir, la \emph{ausencia} de la dimensión. Institucionalismo, en
+cambio, listaba «formalidad burocrática y neutralidad» entre sus \textbf{marcadores a favor}. Un texto
+periodístico neutro puntuaba por tanto 1 en siete dimensiones y subía en la octava, y el \emph{argmax} no
+tenía escapatoria.
+
+\textbf{(2) Umbral de evidencia demasiado bajo en el Nivel 3.} La redacción de v1.0 —«las instituciones o los
+procedimientos legales articulan parte importante del argumento o la narrativa»— se satisface con la
+presencia de una entidad pública como sujeto de la noticia. Esa es la forma normal de redactar casi cualquier
+nota de gestión pública en Colombia, de modo que el Nivel 3 describía al periodismo político ordinario en
+lugar de un encuadre ideológico.
+
+\textbf{(3) Ausencia de válvula de escape en el instrumento.} La regla de umbral mínimo de §2.1 —que
+asigna «Sin encuadre ideológico dominante» cuando ningún puntaje supera 2— existía en v1.0 pero estaba
+marcada como pendiente de ratificación y \textbf{no se implementó en la interfaz de anotación}, que además
+no capturaba los puntajes 1–5 necesarios para evaluarla. El codificador quedó obligado a elegir una de las
+ocho clases para \emph{todo} artículo, incluidos los que no tenían encuadre. El excedente se acumuló en la
+clase cuyos marcadores superficiales son más frecuentes.
+
+Las tres causas apuntan en la misma dirección y se refuerzan entre sí: la primera y la segunda inflan el
+puntaje de Institucionalismo en textos sin encuadre, y la tercera impide registrarlos como lo que son.
+
+\subsection{Cambios derivados}
+\begin{longtable}{@{}p{1.0cm}p{7.6cm}p{6.6cm}@{}}
+\toprule \textbf{Causa} & \textbf{Cambio} & \textbf{Sección}\\ \midrule\endhead
+(1) & Se retira «formalidad burocrática y neutralidad» de los marcadores de Institucionalismo. &
+§3.2, marcadores\\
+\addlinespace
+(1) & Se añade una lista explícita de \emph{no-marcadores}, con los cuatro rasgos que no activan la dimensión
+por sí solos. & §3.2, caja «No son marcadores»\\
+\addlinespace
+(1,\,2) & Se reescriben los marcadores para exigir función argumentativa («se argumenta que la validez
+depende del procedimiento») en lugar de presencia léxica. & §3.2, marcadores\\
+\addlinespace
+(2) & Nivel 2 redefinido: institución como sujeto gramatical, narrativa informativa y no valorativa. Es el nivel
+por defecto de la nota administrativa. & §3.2, escala\\
+\addlinespace
+(2) & Nivel 3 redefinido: exige valoración explícita de un proceso formal. & §3.2, escala\\
+\addlinespace
+(2) & Se añade un \textbf{Ejemplo de Nivel 2} con su explicación contrastiva, por ser el nivel que concentró
+la confusión. & §3.2, ejemplos\\
+\addlinespace
+(2) & Instrucción general nueva: «el tema no es el encuadre» y prueba de sustracción, aplicable a las ocho
+dimensiones. & §1.5\\
+\addlinespace
+(3) & Se ratifica la regla de umbral mínimo y se fija su tratamiento: exclusión, no novena clase. & §2.1,
+regla 3\\
+\addlinespace
+(3) & Se ratifica la regla de empate con criterio determinístico asimétrico. & §2.1, regla 2\\
+\addlinespace
+(3) & Se define el procedimiento abreviado de anotación, que vuelve aplicable la regla de umbral con un solo
+puntaje en lugar de ocho. & §2.2\\
+\addlinespace
+(3) & La plantilla incorpora \texttt{id\_pred\_fuerza} y \texttt{procedimiento}; \texttt{id\_pred} admite
+\texttt{sin\_encuadre}. & Apéndice B\\
+\bottomrule
+\end{longtable}
+
+\subsection{Qué no se cambió, y por qué}
+\begin{itemize}
+\item \textbf{Las ocho clases y los cuatro ejes.} Son el contrato del Anteproyecto aprobado y el anclaje con
+el V-Party Dataset. v1.1 no añade, elimina ni renombra ninguna dimensión.
+\item \textbf{La definición teórica de Institucionalismo.} Sigue siendo el compromiso con el pluralismo y el
+procedimiento, anclada en \texttt{v2paplur}. Lo que v1.1 modifica es el \emph{umbral de evidencia} exigido
+para afirmar que ese compromiso está presente en un texto, que es un asunto de operacionalización y no de
+teoría.
+\item \textbf{La arquitectura del clasificador.} Una única distribución \emph{softmax} de dimensión 8 que
+suma 1,0, tal como está comprometida.
+\item \textbf{El protocolo de concordancia.} El umbral $\alpha \geq 0.8$ y el procedimiento de doble
+anotación independiente permanecen como están definidos en §1.7.
+\end{itemize}
+
+\subsection{Verificación prevista}
+El efecto de esta revisión debe medirse antes de etiquetar el resto del Gold Set y antes de generar el Silver
+Set:
+
+\begin{enumerate}
+\item \textbf{Re-anotar los 169 artículos} asignados a Institucionalismo en la primera ronda, con la escala
+revisada y la válvula de escape habilitada. Los 38 restantes no están en disputa y no requieren revisión.
+\item \textbf{Criterio de éxito esperado:} Institucionalismo debe seguir siendo la clase mayoritaria —el
+corpus contiene una proporción alta de fuentes institucionales y comunicados oficiales, y esa composición es
+real—, pero su participación debería situarse en el orden del 35–45\,\% y aparecer una proporción no trivial
+de «Sin encuadre ideológico dominante». Una distribución uniforme entre las ocho clases \textbf{no} es el
+objetivo y sería, de hecho, indicio de sobrecorrección.
+\item \textbf{Propagar al juez LLM.} La definición revisada debe aplicarse también al codebook operacional
+que instruye al modelo del Silver Set antes de ejecutarlo. Si el Silver Set se genera con la versión antigua, el
+sesgo se reproduce a escala de todo el corpus y la auditoría de concordancia contra un Gold Set corregido lo
+registraría como desacuerdo del juez, no como lo que sería: dos codebooks distintos (§1.1).
+\end{enumerate}
+
+\newpage
+\section*{Referencias}
+\addcontentsline{toc}{section}{Referencias}
+\small
+Entman, R. M. (1993). Framing: Toward Clarification of a Fractured Paradigm. \emph{Journal of
+Communication}, 43(4), 51–58.
+
+Hayes, A. F., \& Krippendorff, K. (2007). Answering the Call for a Standard Reliability Measure for Coding
+Data. \emph{Communication Methods and Measures}, 1(1), 77–89.
+
+Lindberg, S. I., Düpont, N., Higashijima, M., Kavasoglu, Y. B., Marquardt, K. L., Bernhard, M., Döring, H.,
+Hicken, A., Laebens, M., Medzihorsky, J., Neundorf, A., Reuter, O. J., Ruth–Lovell, S., Weghorst, K. R.,
+Wiesehomeier, N., Wright, J., Alizada, N., Bederke, P., Gastaldi, L., Grahn, S., Hindle, G., Ilchenko, N., von
+Römer, J., Wilson, S., Pemstein, D., \& Seim, B. (2022). \emph{Codebook Varieties of Party Identity and
+Organization (V-Party) V2}. Varieties of Democracy (V-Dem) Project.
+\url{https://doi.org/10.23696/vpartydsv2}
+
+Trujillo Riascos, K. S., \& Camargo Chacón, J. E. (2026). \emph{Desarrollo de clasificador multiclase para la
+identificación de orientación ideológica en noticias políticas colombianas} [Anteproyecto de trabajo de
+grado]. Universidad del Valle.
+
+\end{document}

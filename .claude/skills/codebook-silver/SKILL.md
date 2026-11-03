@@ -61,13 +61,35 @@ Casos que confunden:
   la estructura: su voluntad como fuente de legitimidad.
 - **Mencionar "el pueblo" no es populismo.** Lo es cuando hay dicotomía
   pueblo virtuoso / élite corrupta como motor del argumento.
+- **Hablar de instituciones no es institucionalismo.** Que la Alcaldía, el
+  Congreso o una agencia sean el sujeto de la noticia es el modo normal de
+  narrar la gestión pública: es informativo, no valorativo. Lo es cuando el
+  texto defiende que el procedimiento debía seguirse, o denuncia que se lo
+  saltaron. Si dudas, aplica la prueba: quítale la institución al texto — ¿se
+  cae el argumento, o solo cambia el protagonista?
 - **Una nota de política exterior no es automáticamente soberanismo ni
   globalismo.** Si el eje que la organiza es otro (p. ej. el líder), esa es la
   dominante.
 
-## 4. Cuando dos clases empatan de verdad
+## 4. Cuando ninguna de las ocho estructura el texto
+
+Escribe `sin_encuadre`. Es la regla 3 del §2.1 del codebook v1.1: el texto es
+político pero ninguna de las ocho dimensiones lo organiza. **No es una
+abstención** — es una afirmación sobre el texto y cuenta para el consenso.
+
+Es lo que corresponde al boletín regulatorio, al comunicado de gestión y al
+parte operativo sin valoración propia. Forzar una de las ocho sobre un texto
+sin encuadre mete ruido en la clase que más se le parezca por vocabulario.
+
+Esos artículos se excluyen del entrenamiento; no son una novena clase.
+
+## 5. Cuando dos clases empatan de verdad
 
 Escribe `dud`. No fuerces una.
+
+Si el empate involucra a `institucionalismo` y no logras romperlo, elige **la
+otra** clase. Ese eje gana empates por acumulación de indicios débiles, no por
+dominancia real, y la asimetría corrige ese sesgo conocido.
 
 Esos casos los resuelve otro juez, y además son señal: un `dud` bien puesto
 dice más sobre los límites del codebook que una etiqueta inventada. Pero úsalo
@@ -75,7 +97,7 @@ con moderación — por encima del ~8 % significa que estás delegando, no
 dudando. Si te inclinas hacia un lado, decide y **baja la confianza**: para
 eso está.
 
-## 5. Formato de salida
+## 6. Formato de salida
 
 Una línea por artículo, en el orden del lote:
 
@@ -99,7 +121,7 @@ n  clase  [confianza]
 
 Escribe **una línea por cada artículo del lote**, sin saltarte ninguno.
 
-## 6. Errores que arruinan el silver
+## 7. Errores que arruinan el silver
 
 - **Etiquetar por el tema.** Una nota sobre pensiones puede ser
   conservadurismo, progresismo o institucionalismo según cómo la enmarque.

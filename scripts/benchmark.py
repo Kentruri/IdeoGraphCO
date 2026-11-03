@@ -31,6 +31,15 @@ Uso:
 
     # Override de epochs
     python scripts/benchmark.py --max-epochs 5
+
+    # Cribado: train reducido, corridas aparte (logs/benchmark/cribado/)
+    python scripts/benchmark.py --tag cribado --max-epochs 4 \\
+        --set data.splits_path=data/processed/splits_cribado.json
+
+    # Ablación del troceo (P2.3): solo los primeros 512 tokens
+    python scripts/benchmark.py --models beto --tag cribado-truncate \\
+        --set data.splits_path=data/processed/splits_cribado.json \\
+        --set data.chunking_strategy=truncate
 """
 
 import argparse
@@ -39,22 +48,28 @@ import subprocess
 import sys
 import time
 
-from src.training.benchmark.registry import AVAILABLE_MODELS
+from src.training.benchmark.registry import ALL_MODELS, AVAILABLE_MODELS
 from src.core.paths import LOGS_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def _run_key(encoder_alias: str, seed: int) -> str:
-    """Identificador único de una corrida (encoder × semilla)."""
-    return f"{encoder_alias}__seed{seed}"
+def _run_key(encoder_alias: str, seed: int, tag: str | None = None) -> str:
+    """Identificador único de una corrida (encoder × semilla).
+
+    Con `tag`, la corrida va a su propia carpeta (logs/benchmark/<tag>/…):
+    el cribado, el oficial y las ablaciones no se mezclan en el reporte.
+    """
+    key = f"{encoder_alias}__seed{seed}"
+    return f"{tag}/{key}" if tag else key
 
 
 def run_training(
     encoder_alias: str,
     seed: int,
     extra_overrides: list[str] | None = None,
+    tag: str | None = None,
 ) -> bool:
     """Lanza un entrenamiento individual con el config del encoder y seed.
 
@@ -63,7 +78,7 @@ def run_training(
     Returns:
         True si terminó sin errores, False si falló.
     """
-    run_key = _run_key(encoder_alias, seed)
+    run_key = _run_key(encoder_alias, seed, tag)
 
     cmd = [
         sys.executable, "-m", "src.training.train",
@@ -121,8 +136,10 @@ def run_training(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark de encoders en español")
     parser.add_argument(
-        "--models", nargs="+", choices=AVAILABLE_MODELS, default=AVAILABLE_MODELS,
-        help=f"Modelos a entrenar (disponibles: {', '.join(AVAILABLE_MODELS)})",
+        "--models", nargs="+", choices=ALL_MODELS, default=AVAILABLE_MODELS,
+        help=f"Modelos a entrenar (default, los del anteproyecto: "
+             f"{', '.join(AVAILABLE_MODELS)}; adicionales: "
+             f"{', '.join(m for m in ALL_MODELS if m not in AVAILABLE_MODELS)})",
     )
     parser.add_argument(
         "--skip", nargs="+", default=[],
@@ -144,6 +161,15 @@ def main() -> None:
         "--continue-on-error", action="store_true",
         help="Continuar con los siguientes modelos si uno falla",
     )
+    parser.add_argument(
+        "--tag", type=str, default=None,
+        help="Carpeta de la tanda en logs/benchmark/ (ej: cribado, oficial)",
+    )
+    parser.add_argument(
+        "--set", action="append", default=[], metavar="CLAVE=VALOR",
+        help="Override de Hydra para todas las corridas (repetible), "
+             "ej: --set data.splits_path=data/processed/splits_cribado.json",
+    )
     args = parser.parse_args()
 
     # Filtrar modelos según args
@@ -159,6 +185,7 @@ def main() -> None:
         extra_overrides.append(f"trainer.max_epochs={args.max_epochs}")
     if args.smoke_test:
         extra_overrides.append("trainer.fast_dev_run=true")
+    extra_overrides.extend(args.set)
 
     total_runs = len(models_to_train) * len(args.seeds)
 
@@ -186,8 +213,8 @@ def main() -> None:
             completed += 1
             print(f"\n[{completed}/{total_runs}] Corriendo {encoder_alias} con seed {seed}\n")
 
-            success = run_training(encoder_alias, seed, extra_overrides)
-            results[_run_key(encoder_alias, seed)] = success
+            success = run_training(encoder_alias, seed, extra_overrides, args.tag)
+            results[_run_key(encoder_alias, seed, args.tag)] = success
 
             if not success and not args.continue_on_error:
                 logger.error("Deteniendo benchmark.")
@@ -209,7 +236,8 @@ def main() -> None:
         print(f"  {status} {run_key}")
     print()
     if not args.smoke_test:
-        print("  Siguiente paso: python scripts/compare_models.py")
+        print("  Siguiente paso: python scripts/compare_models.py"
+              + (f" --benchmark-dir logs/benchmark/{args.tag}" if args.tag else ""))
         print("  (la comparación usa métricas de VALIDACIÓN; el test/gold se")
         print("   evalúa una sola vez con el ganador: scripts/final_eval.py)")
     print("=" * 60)

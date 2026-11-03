@@ -24,3 +24,13 @@ MODEL_REGISTRY: dict[str, str] = {
 }
 
 AVAILABLE_MODELS: list[str] = list(MODEL_REGISTRY.keys())
+
+# Encoders FUERA del anteproyecto, como experimento adicional: no corren por
+# defecto, hay que pedirlos con --models. "mrbert-es" (BSC-LT, feb-2026) es un
+# ModernBERT español de 8.192 tokens: lee el artículo entero sin trocear, para
+# medir si la dilución del mean-pool (limitación declarada) cuesta acierto.
+EXTRA_MODELS: dict[str, str] = {
+    "mrbert-es": "BSC-LT/MrBERT-es",
+}
+
+ALL_MODELS: list[str] = AVAILABLE_MODELS + list(EXTRA_MODELS)
